@@ -3,3 +3,4 @@ openpyxl
 customtkinter
 pyinstaller
 python-dateutil
+Pillow
