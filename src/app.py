@@ -43,14 +43,13 @@ class App:
             ruta_backup = self.backup.crear_backup()
             log_callback(f"BACKUP CREADO: {ruta_backup.name}")
         except PermissionError as pe:
-            # Captura directa si el Excel maestro está abierto por el usuario
             raise PermissionError(str(pe))
         except Exception as e:
             log_callback(f"WARNING: No se pudo crear el backup ({e}). Continuando procesamiento...")
 
         # 3. Procesar y agregar registros al Excel Maestro
         log_callback("EXCEL: Leyendo reporte semanal y actualizando hoja Monitoreo WW...")
-        
+
         try:
             total_procesados = self.excel.agregar_registros(archivo_nuevo)
             log_callback(f"EXCEL: Se actualizaron/insertaron {total_procesados} registros de parques exitosamente.")
