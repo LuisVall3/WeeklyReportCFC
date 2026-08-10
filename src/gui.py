@@ -34,7 +34,7 @@ class MainWindow(ctk.CTk):
         # ==========================
         # CONFIGURACIÓN DE VENTANA
         # ==========================
-        self.title("NovaSource Power | Carbon Free Importer")
+        self.title("NovaSource Power | CCTV Weekly Report CFC")
         self.geometry("900x650")
         self.minsize(800, 580)
 
@@ -66,7 +66,7 @@ class MainWindow(ctk.CTk):
 
         self.brand_label = ctk.CTkLabel(
             self.title_box,
-            text="NOVASOURCE",
+            text="NOVASOURCE POWER SERVICES",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=COLOR_ACCENT_GREEN
         )
@@ -74,7 +74,7 @@ class MainWindow(ctk.CTk):
 
         self.titulo = ctk.CTkLabel(
             self.title_box,
-            text="Carbon Free Importer",
+            text="CCTV Weekly Report CFC",
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=COLOR_TEXT_MAIN
         )
@@ -82,7 +82,7 @@ class MainWindow(ctk.CTk):
 
         self.subtitulo = ctk.CTkLabel(
             self.title_box,
-            text="Daily Operator Log Processing System",
+            text="Weekly CCTV Alarms & Operator Log Processing System",
             font=ctk.CTkFont(size=13),
             text_color=COLOR_TEXT_MUTED
         )
@@ -161,21 +161,21 @@ class MainWindow(ctk.CTk):
 
         # Mensajes de inicio
         self.escribir("SYSTEM: Conexión con NovaSource Power Services establecida.")
-        self.escribir("READY: Esperando acción del usuario para importar registros...")
+        self.escribir("READY: Esperando reporte semanal CCTV para importar registros...")
 
     # ==========================
     # LÓGICA Y MÉTODOS
     # ==========================
 
     def escribir(self, texto: str):
-        """Escribe una línea en la consola de logs con autoclass scroll."""
+        """Escribe una línea en la consola de logs con auto scroll."""
         self.log.insert("end", texto + "\n")
         self.log.see("end")
 
     def iniciar_importacion_thread(self):
         """Abre el explorador de archivos y, si se selecciona uno, inicia la importación."""
         archivo_seleccionado = filedialog.askopenfilename(
-            title="Seleccionar archivo Excel para importar",
+            title="Seleccionar reporte CCTV Excel para importar",
             initialdir=str(self.app.config.ruta_descargas),
             filetypes=[("Archivos Excel", "*.xlsx"), ("Todos los archivos", "*.*")]
         )
@@ -213,8 +213,8 @@ class MainWindow(ctk.CTk):
         self.boton_importar.configure(state="normal", fg_color=COLOR_ACCENT_GREEN)
 
         messagebox.showinfo(
-            "NovaSource Power Services",
-            "El reporte de Carbon Free Importer se ha procesado con éxito."
+            "CCTV Weekly Report CFC",
+            "El reporte semanal de alarmas CCTV se ha procesado con éxito en el Excel Maestro."
         )
 
     def _al_finalizar_error(self, error_msg: str):
@@ -238,7 +238,7 @@ class SetupDialog(ctk.CTk):
 
         self.config_manager = config_manager
 
-        self.title("NovaSource Power | Configuración Inicial")
+        self.title("CCTV Weekly Report CFC | Configuración Inicial")
         self.geometry("550x380")
         self.resizable(False, False)
 
