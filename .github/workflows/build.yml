@@ -26,12 +26,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install customtkinter openpyxl pandas pyinstaller
 
-    - name: Compilar con PyInstaller
+    - name: Compilar con PyInstaller (Modo Carpeta Ultrarrápido)
       run: |
-        pyinstaller --noconsole --onefile --collect-all customtkinter app.py
+        pyinstaller --noconsole --onedir --collect-data customtkinter --collect-binaries customtkinter app.py
 
     - name: Subir ejecutable como Artifact
       uses: actions/upload-artifact@v4
       with:
         name: CCTV-Weekly-Report-CFC-Windows
-        path: dist/app.exe
+        path: dist/app
