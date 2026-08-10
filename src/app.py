@@ -6,7 +6,7 @@ Coordina la validación, respaldo e importación de registros en el Excel Maestr
 """
 
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Dict
 from src.config import ConfigManager
 from src.backup import BackupManager
 from src.excel import ExcelManager
@@ -19,7 +19,7 @@ class App:
         self.backup = BackupManager(self.config.ruta_maestro)
         self.excel = ExcelManager(self.config.ruta_maestro)
 
-    def run(self, log_callback: Callable[[str], None], ruta_archivo: str):
+    def run(self, log_callback: Callable[[str], None], ruta_archivo: str) -> Dict[str, int]:
         """
         Flujo principal de procesamiento:
         1. Validar existencia del archivo maestro
@@ -51,9 +51,31 @@ class App:
         log_callback("EXCEL: Leyendo reporte semanal y actualizando hoja Monitoreo WW...")
 
         try:
-            total_procesados = self.excel.agregar_registros(archivo_nuevo)
-            log_callback(f"EXCEL: Se actualizaron/insertaron {total_procesados} registros de parques exitosamente.")
+            # Le pasamos log_callback para que imprima la hoja de destino en pantalla
+            resultado = self.excel.agregar_registros(archivo_nuevo, log_callback)
+            
+            # Normalizar respuesta (si el método retorna un dict o un entero)
+            if isinstance(resultado, dict):
+                total = resultado.get("total", 0)
+                agregados = resultado.get("agregados", total)
+                omitidos = resultado.get("omitidos", 0)
+            else:
+                total = int(resultado) if resultado is not None else 0
+                agregados = total
+                omitidos = 0
+
+            log_callback(f"EXCEL: Se procesaron {total} registros (Agregados/Actualizados: {agregados}, Omitidos: {omitidos}).")
             log_callback("ÉXITO: Archivo Maestro guardado correctamente.")
+
+            return {
+                "total": total,
+                "agregados": agregados,
+                "omitidos": omitidos
+            }
         except Exception as e:
             log_callback(f"ERROR EXCEL: Fallo al escribir en el archivo maestro: {e}")
             raise e
+
+
+# Alias de compatibilidad para gui.py y main.py
+CoreApp = App

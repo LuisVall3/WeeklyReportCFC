@@ -2,7 +2,7 @@
 config.py
 
 Manejador de configuración y rutas para la aplicación.
-Mantiene el atributo .config que requiere la interfaz gráfica (gui.py).
+Guarda y carga las rutas en config.json.
 """
 
 import json
@@ -36,7 +36,7 @@ class ConfigManager:
         """Guarda las rutas en el archivo json."""
         if "rutas" not in self.config:
             self.config["rutas"] = {}
-        
+
         self.config["rutas"]["maestro"] = ruta_maestro
         self.config["rutas"]["semanal"] = ruta_semanal
 
@@ -45,17 +45,16 @@ class ConfigManager:
 
     @property
     def ruta_maestro(self) -> str:
-        """Propiedad para obtener la ruta del maestro."""
         return self.config.get("rutas", {}).get("maestro", "")
 
     @property
     def ruta_semanal(self) -> str:
-        """Propiedad para obtener la ruta del reporte semanal."""
         return self.config.get("rutas", {}).get("semanal", "")
 
     def rutas_validas(self) -> bool:
-        """Verifica que la ruta del archivo maestro esté configurada y exista."""
+        """Comprueba si la ruta del maestro está configurada y el archivo existe."""
         maestro = self.ruta_maestro
         if not maestro:
             return False
+        # Convertimos siempre a Path para evitar 'str object has no attribute exists'
         return Path(maestro).exists()

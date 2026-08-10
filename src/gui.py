@@ -6,6 +6,8 @@ Permite configurar rutas, procesar reportes semanales y ver métricas/logs detal
 """
 
 import os
+import sys
+import traceback
 from pathlib import Path
 from typing import Optional
 import customtkinter as ctk
@@ -15,6 +17,47 @@ from tkinter import filedialog, messagebox
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
+
+from PIL import Image, ImageTk
+
+def aplicar_icono_ventana(window):
+    """Aplica el ícono corporativo desde assets/ según el sistema operativo (Windows/macOS)."""
+    base_dir = Path(__file__).resolve().parent.parent
+    ruta_png = base_dir / "assets" / "novasource_logo.png"
+    ruta_ico = base_dir / "assets" / "favicon.ico"
+
+    # --- CONFIGURACIÓN PARA MACOS ---
+    if sys.platform == "darwin":
+        def _cargar_mac():
+            if ruta_png.exists():
+                try:
+                    # Asignar imagen al Dock de macOS mediante la API nativa de Tkinter
+                    img_pil = Image.open(ruta_png)
+                    photo = ImageTk.PhotoImage(img_pil)
+                    window.tk.call('wm', 'iconphoto', window._w, photo)
+                    window._icon_photo = photo
+                except Exception as e:
+                    print(f"Error cargando icono en macOS: {e}")
+
+        window.after(200, _cargar_mac)
+
+    # --- CONFIGURACIÓN PARA WINDOWS ---
+    elif sys.platform.startswith("win"):
+        try:
+            import ctypes
+            myappid = "novasource.weeklyreport.cfc.1.0"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
+        def _cargar_win():
+            if ruta_ico.exists():
+                try:
+                    window.iconbitmap(str(ruta_ico))
+                except Exception:
+                    pass
+
+        window.after(200, _cargar_win)
 
 class SetupDialog(ctk.CTk):
     """Ventana inicial de configuración de rutas."""
@@ -26,6 +69,12 @@ class SetupDialog(ctk.CTk):
         self.title("CCTV Control Center - Configuración Inicial")
         self.geometry("600x420")
         self.resizable(False, False)
+
+        # Aplicar el ícono corporativo
+        aplicar_icono_ventana(self)
+
+        # Capturar el botón de cerrar la ventana (X)
+        self.protocol("WM_DELETE_WINDOW", self._cerrar_limpio)
 
         # Contenedor principal
         self.frame = ctk.CTkFrame(self, corner_radius=12, fg_color="#1A1C1E")
@@ -49,20 +98,32 @@ class SetupDialog(ctk.CTk):
         self.lbl_subtitle.pack(pady=(0, 20))
 
         # Input: Excel Maestro
-        self.lbl_maestro = ctk.CTkLabel(self.frame, text="Ruta Excel Maestro (.xlsx):", font=ctk.CTkFont(size=12, weight="bold"))
+        self.lbl_maestro = ctk.CTkLabel(
+            self.frame, text="Ruta Excel Maestro (.xlsx):", font=ctk.CTkFont(size=12, weight="bold")
+        )
         self.lbl_maestro.pack(anchor="w", padx=30, pady=(5, 2))
 
         self.frame_maestro = ctk.CTkFrame(self.frame, fg_color="transparent")
         self.frame_maestro.pack(fill="x", padx=30, pady=(0, 15))
 
         ruta_inicial_maestro = self.config_manager.ruta_maestro
-        self.entry_maestro = ctk.CTkEntry(self.frame_maestro, placeholder_text="Selecciona archivo Excel Maestro...", fg_color="#26292B", border_color="#3A3D40")
+        self.entry_maestro = ctk.CTkEntry(
+            self.frame_maestro,
+            placeholder_text="Selecciona archivo Excel Maestro...",
+            fg_color="#26292B",
+            border_color="#3A3D40"
+        )
         self.entry_maestro.pack(side="left", fill="x", expand=True, padx=(0, 10))
         if ruta_inicial_maestro:
             self.entry_maestro.insert(0, ruta_inicial_maestro)
 
         self.btn_browse_maestro = ctk.CTkButton(
-            self.frame_maestro, text="Buscar", width=90, fg_color="#007ACC", hover_color="#005999", command=self._buscar_maestro
+            self.frame_maestro,
+            text="Buscar",
+            width=90,
+            fg_color="#007ACC",
+            hover_color="#005999",
+            command=self._buscar_maestro
         )
         self.btn_browse_maestro.pack(side="right")
 
@@ -99,7 +160,16 @@ class SetupDialog(ctk.CTk):
             return
 
         self.config_manager.guardar_config(ruta)
-        self.destroy()
+        self._cerrar_limpio()
+
+    def _cerrar_limpio(self):
+        """Cierre controlado para evitar advertencias de CustomTkinter."""
+        try:
+            self.withdraw()
+            self.quit()
+            self.destroy()
+        except Exception:
+            pass
 
 
 class MainWindow(ctk.CTk):
@@ -109,9 +179,15 @@ class MainWindow(ctk.CTk):
         super().__init__()
         self.core_app = core_app
 
-        self.title("CCTV REPORT SYSTEM - MONITOREO & CONSOLA")
+        self.title("Reporte Semanal CFC - NovaSource")
         self.geometry("900x650")
         self.minsize(800, 550)
+
+        # Aplicar el ícono corporativo
+        aplicar_icono_ventana(self)
+
+        # Capturar el evento de cierre de ventana (X)
+        self.protocol("WM_DELETE_WINDOW", self._cerrar_aplicacion)
 
         # Configurar Grid principal
         self.grid_columnconfigure(0, weight=1)
@@ -121,17 +197,31 @@ class MainWindow(ctk.CTk):
         self._crear_panel_control()
         self._crear_panel_resumen_y_logs()
 
+    def _cerrar_aplicacion(self):
+        """Maneja el cierre limpio de la ventana sin advertencias."""
+        try:
+            self.withdraw()
+            self.quit()
+            self.destroy()
+        except Exception:
+            pass
+
     def _crear_encabezado(self):
         """Header estilo consola de monitoreo."""
         header_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="#111315", height=60)
         header_frame.grid(row=0, column=0, sticky="ew")
 
-        lbl_status_icon = ctk.CTkLabel(header_frame, text="🔴 MONITOREO ACTIVO", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00FF66")
+        lbl_status_icon = ctk.CTkLabel(
+            header_frame,
+            text="🔴 MONITOREO ACTIVO",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#00FF66"
+        )
         lbl_status_icon.pack(side="left", padx=20, pady=15)
 
         lbl_title = ctk.CTkLabel(
             header_frame,
-            text="SISTEMA DE GESTIÓN DE REPORTES CCTV",
+            text="SISTEMA DE GESTIÓN DE REPORTES CCTV - NOVASOURCE",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color="#FFFFFF"
         )
@@ -142,16 +232,33 @@ class MainWindow(ctk.CTk):
         control_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="#1A1C1E")
         control_frame.grid(row=1, column=0, sticky="ew", padx=15, pady=15)
 
-        lbl_section = ctk.CTkLabel(control_frame, text="📁 CARGA DE REPORTE SEMANAL", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00D2FF")
+        lbl_section = ctk.CTkLabel(
+            control_frame,
+            text="📁 CARGA DE REPORTE SEMANAL",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#00D2FF"
+        )
         lbl_section.pack(anchor="w", padx=15, pady=(10, 5))
 
         file_select_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
         file_select_frame.pack(fill="x", padx=15, pady=(0, 15))
 
-        self.entry_reporte = ctk.CTkEntry(file_select_frame, placeholder_text="Seleccionar archivo semanal a procesar...", fg_color="#26292B", border_color="#3A3D40")
+        self.entry_reporte = ctk.CTkEntry(
+            file_select_frame,
+            placeholder_text="Seleccionar archivo semanal a procesar...",
+            fg_color="#26292B",
+            border_color="#3A3D40"
+        )
         self.entry_reporte.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
-        btn_browse = ctk.CTkButton(file_select_frame, text="Examinar", width=100, fg_color="#3A3D40", hover_color="#4A4D50", command=self._seleccionar_reporte)
+        btn_browse = ctk.CTkButton(
+            file_select_frame,
+            text="Examinar",
+            width=100,
+            fg_color="#3A3D40",
+            hover_color="#4A4D50",
+            command=self._seleccionar_reporte
+        )
         btn_browse.pack(side="left", padx=(0, 10))
 
         self.btn_procesar = ctk.CTkButton(
@@ -172,7 +279,7 @@ class MainWindow(ctk.CTk):
         main_container.grid_columnconfigure(0, weight=1)
         main_container.grid_rowconfigure(1, weight=1)
 
-        # --- PANEL DE MÉTRICAS / TARJETAS (NUEVO) ---
+        # --- PANEL DE MÉTRICAS / TARJETAS ---
         cards_frame = ctk.CTkFrame(main_container, fg_color="transparent")
         cards_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         cards_frame.grid_columnconfigure((0, 1, 2), weight=1)
@@ -216,7 +323,7 @@ class MainWindow(ctk.CTk):
         self.log("SISTEMA LISTO. Selecciona un archivo semanal para iniciar auditoría.")
 
     def log(self, mensaje: str):
-        """Escribe un mensaje en la consola."""
+        """Escribe un mensaje en la consola de la interfaz."""
         self.txt_logs.insert("end", f"> {mensaje}\n")
         self.txt_logs.see("end")
 
@@ -236,17 +343,16 @@ class MainWindow(ctk.CTk):
             return
 
         self.btn_procesar.configure(state="disabled")
-        
+
         # Reiniciar métricas
         self.lbl_num_total.configure(text="0")
         self.lbl_num_exito.configure(text="0")
         self.lbl_num_omitidos.configure(text="0")
 
         try:
-            # Ejecutar el flujo de la App
+            # Ejecutar el flujo de la aplicación
             resumen = self.core_app.run(self.log, ruta)
 
-            # Si el backend retorna un diccionario con el detalle de agregados/omitidos
             if isinstance(resumen, dict):
                 total = resumen.get("total", 0)
                 agregados = resumen.get("agregados", 0)
@@ -256,15 +362,22 @@ class MainWindow(ctk.CTk):
                 agregados = total
                 omitidos = 0
 
-            # Actualizar tarjetas de resumen
+            # Actualizar tarjetas
             self.lbl_num_total.configure(text=str(total))
             self.lbl_num_exito.configure(text=str(agregados))
             self.lbl_num_omitidos.configure(text=str(omitidos))
 
-            messagebox.showinfo("Proceso Finalizado", f"Reporte procesado exitosamente.\n\nNuevos/Actualizados: {agregados}\nOmitidos/Sin cambios: {omitidos}")
+            messagebox.showinfo(
+                "Proceso Finalizado",
+                f"Reporte procesado exitosamente.\n\nTotal procesados: {total}\nNuevos/Actualizados: {agregados}\nOmitidos/Sin cambios: {omitidos}"
+            )
 
         except Exception as e:
+            error_detallado = traceback.format_exc()
+            print("=== ERROR DETALLADO ===")
+            print(error_detallado)
+
             self.log(f"ERROR CRÍTICO: {str(e)}")
-            messagebox.showerror("Error de Procesamiento", f"Ocurrió un error:\n{str(e)}")
+            messagebox.showerror("Error de Procesamiento", f"Ocurrió un error al procesar:\n\n{str(e)}")
         finally:
             self.btn_procesar.configure(state="normal")
