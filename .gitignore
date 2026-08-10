@@ -1,38 +1,40 @@
 # Entorno virtual
 .venv/
+venv/
+ENV/
 
-# Python
+# Archivos compilados y caché de Python
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyc
 
-# macOS
-.DS_Store
-
-# VS Code
-.vscode/
-
-# Archivos generados
+# Archivos de distribución / PyInstaller / Executables
 dist/
 build/
+*.spec
 
-# Datos temporales
-data/Descargas/*
-data/Logs/*
-data/Backups/*
+# Archivos y carpetas de datos
+data/
+*.xlsx
+*.xls
+*.csv
+*.log
+config.json
 
-# Mantener la estructura de carpetas
+# Excepciones: Mantener estructura de carpetas en Git
+!data/
+!data/Descargas/
+!data/Logs/
+!data/Backups/
+!data/.gitkeep
 !data/Descargas/.gitkeep
 !data/Logs/.gitkeep
-!data/Backups/.gitkeepl.com
-CFCImporter
-CFCImporter
+!data/Backups/.gitkeep
 
+# macOS / Sistema
+.DS_Store
 
-build/
-dist/
-*.spec
-.venv/
-__pycache__/
-*.pyc
-data/
+# IDEs
+.vscode/
+.idea/
