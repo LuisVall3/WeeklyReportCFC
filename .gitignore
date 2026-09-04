@@ -32,6 +32,16 @@ config.json
 !data/Logs/.gitkeep
 !data/Backups/.gitkeep
 
+# Excepciones: Asegurar carpeta de Assets e imágenes
+!assets/
+!assets/*
+!assets/**/*.png
+!assets/**/*.ico
+
+# Archivos temporales de PostScript / Impresoras (ignorar temp.ps)
+assets/temp.ps
+*.ps
+
 # macOS / Sistema
 .DS_Store
 

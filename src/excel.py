@@ -2,10 +2,10 @@
 excel.py
 
 Manejo del Excel Maestro y procesamiento del reporte diario de alarmas.
-Basado estrictamente en día calendario (00:00 a 23:59).
+Basado strictly en día calendario (00:00 a 23:59).
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Union, Tuple
 import re
@@ -43,21 +43,20 @@ class ExcelManager:
         "VILLA SECA": "CL118 Villa Seca",
     }
 
+    NOMBRE_HOJA_PLANTILLA = "PLANTILLA"
+
+    # Días de la semana en inglés para coincidir con el diseño de la tabla
+    DIAS_INGLES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"]
+
     def __init__(self, archivo_maestro: Union[str, Path]):
         self.archivo_maestro = Path(archivo_maestro) if archivo_maestro else None
 
     def existe(self) -> bool:
-        """Verifica si el archivo maestro existe en la ruta configurada."""
         if not self.archivo_maestro:
             return False
         return self.archivo_maestro.exists()
 
     def _calcular_turno_y_fecha(self, dt: datetime):
-        """
-        Lógica Día Calendario (00:00:00 a 23:59:59):
-        - DAY: 08:00:00 a 19:59:59 del mismo día.
-        - NIGHT: 00:00:00 a 07:59:59 y 20:00:00 a 23:59:59 del mismo día.
-        """
         fecha = dt.date()
         hora = dt.time()
         t_inicio = datetime.strptime("08:00:00", "%H:%M:%S").time()
@@ -68,21 +67,26 @@ class ExcelManager:
         else:
             return fecha, "NIGHT"
 
-    def procesar_reporte_alarmas(self, archivo_nuevo: Path) -> Tuple[pd.DataFrame, int]:
-        """
-        Lee el archivo de alarmas contabilizando TODAS las alertas/eventos por parque y turno.
-        Calcula la semana de trabajo (WW) considerando turnos de VIERNES a JUEVES.
+    def procesar_reporte_alarmas(
+        self, archivo_nuevo: Path
+    ) -> Tuple[pd.DataFrame, int, datetime.date]:
+        """Lee el archivo de alarmas contabilizando TODAS las alertas/eventos por parque y turno.
+
+        Calcula el número de semana ISO en base al Lunes correspondiente,
+        y devuelve también la fecha de inicio del ciclo (Viernes).
         """
         df = pd.read_excel(
             archivo_nuevo,
             sheet_name="Registro de alarmas y eventos",
-            header=8
+            header=8,
         )
 
         col_hora = "Hora de activación (cliente)"
         col_region = "Región"
 
-        df_filtrado = df[[col_hora, col_region]].dropna(subset=[col_hora]).copy()
+        df_filtrado = (
+            df[[col_hora, col_region]].dropna(subset=[col_hora]).copy()
+        )
         df_filtrado["dt"] = pd.to_datetime(df_filtrado[col_hora])
 
         def mapear_parque(val):
@@ -91,39 +95,82 @@ class ExcelManager:
             val_limpio = str(val).strip().upper()
             return self.EQUIVALENCIAS_PARQUES.get(val_limpio, str(val).strip())
 
-        df_filtrado["Parque_Oficial"] = df_filtrado[col_region].apply(mapear_parque)
+        df_filtrado["Parque_Oficial"] = df_filtrado[col_region].apply(
+            mapear_parque
+        )
         df_filtrado = df_filtrado.dropna(subset=["Parque_Oficial"])
 
         turnos_fechas = df_filtrado["dt"].apply(self._calcular_turno_y_fecha)
         df_filtrado["Fecha_Reporte"] = [tf[0] for tf in turnos_fechas]
         df_filtrado["Turno"] = [tf[1] for tf in turnos_fechas]
 
-        # Lógica de Turno Viernes a Jueves utilizando Pandas Native Datetime
-        fecha_dt = pd.to_datetime(df_filtrado["Fecha_Reporte"].min())
-        dias_hasta_jueves = (3 - fecha_dt.dayofweek) % 7
-        jueves_cierre = fecha_dt + pd.Timedelta(days=dias_hasta_jueves)
-        iso_cal = jueves_cierre.isocalendar()
-        numero_semana = int(iso_cal.week if hasattr(iso_cal, 'week') else iso_cal[1])
+        # ---------------------------------------------------------------------
+        # CÁLCULO DE FECHA DE INICIO Y NÚMERO DE SEMANA
+        # ---------------------------------------------------------------------
+        fecha_min = df_filtrado["Fecha_Reporte"].min()
+        fecha_dt = pd.to_datetime(fecha_min)
 
-        conteo = df_filtrado.groupby(
-            ["Fecha_Reporte", "Parque_Oficial", "Turno"]
-        ).size().unstack(fill_value=0)
+        # 1. Obtenemos el Lunes de esa misma semana para obtener el número WW oficial ISO
+        lunes_semana = fecha_dt - pd.Timedelta(days=fecha_dt.dayofweek)
+        iso_cal = lunes_semana.isocalendar()
+        numero_semana = int(
+            iso_cal.week if hasattr(iso_cal, "week") else iso_cal[1]
+        )
+
+        # 2. Obtenemos el Viernes de inicio para mapear las columnas de la tabla (Viernes a Jueves)
+        dias_atras_viernes = (fecha_dt.dayofweek - 4) % 7
+        viernes_inicio = (fecha_dt - pd.Timedelta(days=dias_atras_viernes)).date()
+        # ---------------------------------------------------------------------
+
+        conteo = (
+            df_filtrado.groupby(["Fecha_Reporte", "Parque_Oficial", "Turno"])
+            .size()
+            .unstack(fill_value=0)
+        )
 
         for col in ["DAY", "NIGHT"]:
             if col not in conteo.columns:
                 conteo[col] = 0
 
-        return conteo.reset_index(), numero_semana
-    
+        # Retorna los 3 valores que espera agregar_registros()
+        return conteo.reset_index(), numero_semana, viernes_inicio
+
+    def _preparar_encabezados_fechas(self, ws, viernes_inicio: datetime.date):
+        """Escribe el rango semanal en B1 y formatea las columnas B-O en Fila 2
+
+        siguiendo el estilo de la plantilla: 'Alarms on [Día] [Número Día] Day / Night'
+        """
+        jueves_cierre = viernes_inicio + timedelta(days=6)
+
+        # 1. Rango de fecha en la Fila 1 (ej: 07-08-2026 to 13-08-2026)
+        ws.cell(
+            row=1,
+            column=2,
+            value=f"{viernes_inicio.strftime('%d-%m-%Y')} to {jueves_cierre.strftime('%d-%m-%Y')}",
+        )
+
+        # 2. Encabezados de días (Fila 2) desde Columna B (2) hasta O (15)
+        col_actual = 2
+        for i in range(7):
+            fecha_dia = viernes_inicio + timedelta(days=i)
+            nombre_dia = self.DIAS_INGLES[i]
+
+            # Formato: "Alarms on Friday 14 Day / Night"
+            texto_encabezado = f"Alarms on {nombre_dia} {fecha_dia.day} Day / Night"
+
+            ws.cell(row=2, column=col_actual, value=texto_encabezado)
+            col_actual += 2
+
     def agregar_registros(self, archivo_nuevo: Path, log_callback=None) -> dict:
-        """
-        Actualiza el archivo Maestro con los conteos en la hoja correspondiente a la semana.
-        """
-        df_resumen, numero_semana = self.procesar_reporte_alarmas(archivo_nuevo)
+        df_resumen, numero_semana, viernes_inicio = self.procesar_reporte_alarmas(
+            archivo_nuevo
+        )
 
         if df_resumen.empty:
             if log_callback:
-                log_callback("WARNING: El reporte de alarmas no contiene registros válidos.")
+                log_callback(
+                    "WARNING: El reporte de alarmas no contiene registros válidos."
+                )
             return {"total": 0, "agregados": 0, "omitidos": 0}
 
         wb = openpyxl.load_workbook(self.archivo_maestro)
@@ -140,14 +187,27 @@ class ExcelManager:
         if hoja_existente:
             ws = wb[hoja_existente]
             if log_callback:
-                log_callback(f"EXCEL: Se actualizará la hoja existente '{hoja_existente}'")
+                log_callback(
+                    f"EXCEL: Se actualizará la hoja existente '{hoja_existente}'"
+                )
         else:
-            hoja_base = wb.worksheets[-1]
+            if self.NOMBRE_HOJA_PLANTILLA in wb.sheetnames:
+                hoja_base = wb[self.NOMBRE_HOJA_PLANTILLA]
+            else:
+                hoja_base = wb.worksheets[-1]
+
             ws = wb.copy_worksheet(hoja_base)
             ws.title = nombre_hoja_target
-            if log_callback:
-                log_callback(f"EXCEL: Se creó la hoja '{nombre_hoja_target}' clonando '{hoja_base.title}'")
 
+            # Escribir fechas dinámicas
+            self._preparar_encabezados_fechas(ws, viernes_inicio)
+
+            if log_callback:
+                log_callback(
+                    f"EXCEL: Se creó la hoja '{nombre_hoja_target}' desde la plantilla maestra."
+                )
+
+        # Identificar parques en la Columna A
         parques_maestro = {}
         fila_total_idx = None
         primera_fila_parque = None
@@ -159,7 +219,12 @@ class ExcelManager:
                 val_str = str(val).strip()
                 if val_str.upper() == "TOTAL":
                     fila_total_idx = row_idx
-                elif val_str.upper() not in ["PHOTOVOLTAIC PARK", "PHOTOVOLTAIC \nPARK", "PARQUE", "PARQUES", "FECHA", "TURNO", ""]:
+                elif val_str.upper() not in [
+                    "PHOTOVOLTAIC PARK",
+                    "FECHA",
+                    "TURNO",
+                    "",
+                ]:
                     if primera_fila_parque is None:
                         primera_fila_parque = row_idx
                     ultima_fila_parque = row_idx
@@ -170,31 +235,26 @@ class ExcelManager:
 
         for fecha in fechas_procesadas:
             df_fecha = df_resumen[df_resumen["Fecha_Reporte"] == fecha]
-            dia_num_str = f"{fecha.day:02d}"
 
-            col_day_idx = None
-            col_night_idx = None
+            # Calcular la columna B-O según la diferencia de días respecto al Viernes de inicio
+            dias_diferencia = (fecha - viernes_inicio).days
 
-            for col_idx in range(2, ws.max_column + 1):
-                v1 = str(ws.cell(row=1, column=col_idx).value or "")
-                v2 = str(ws.cell(row=2, column=col_idx).value or "")
-
-                if dia_num_str in v1 or dia_num_str in v2:
-                    col_day_idx = col_idx
-                    col_night_idx = col_idx + 1
-                    break
-
-            if not col_day_idx:
-                col_day_idx = ws.max_column + 1
+            if 0 <= dias_diferencia <= 6:
+                col_day_idx = 2 + (dias_diferencia * 2)
                 col_night_idx = col_day_idx + 1
-                str_fecha = fecha.strftime("%d-%m-%Y")
-                ws.cell(row=1, column=col_day_idx, value=str_fecha)
-                ws.cell(row=2, column=col_day_idx, value="DAY")
-                ws.cell(row=2, column=col_night_idx, value="NIGHT")
+            else:
+                continue  # Fuera del rango de la semana
 
-            map_day = {str(k).strip().upper(): v for k, v in zip(df_fecha["Parque_Oficial"], df_fecha["DAY"])}
-            map_night = {str(k).strip().upper(): v for k, v in zip(df_fecha["Parque_Oficial"], df_fecha["NIGHT"])}
+            map_day = {
+                str(k).strip().upper(): v
+                for k, v in zip(df_fecha["Parque_Oficial"], df_fecha["DAY"])
+            }
+            map_night = {
+                str(k).strip().upper(): v
+                for k, v in zip(df_fecha["Parque_Oficial"], df_fecha["NIGHT"])
+            }
 
+            # Escribir en la matriz fija
             for parque_nombre, row_idx in parques_maestro.items():
                 cant_day = map_day.get(parque_nombre, 0)
                 cant_night = map_night.get(parque_nombre, 0)
@@ -204,10 +264,15 @@ class ExcelManager:
                 if cant_day > 0 or cant_night > 0:
                     registros_agregados += 1
 
+            # Mantener fórmulas de SUMA en fila TOTAL
             if fila_total_idx and primera_fila_parque and ultima_fila_parque:
                 for col_idx in [col_day_idx, col_night_idx]:
                     letra_col = openpyxl.utils.get_column_letter(col_idx)
-                    ws.cell(row=fila_total_idx, column=col_idx, value=f"=SUM({letra_col}{primera_fila_parque}:{letra_col}{ultima_fila_parque})")
+                    ws.cell(
+                        row=fila_total_idx,
+                        column=col_idx,
+                        value=f"=SUM({letra_col}{primera_fila_parque}:{letra_col}{ultima_fila_parque})",
+                    )
 
         wb.save(self.archivo_maestro)
 
@@ -215,5 +280,5 @@ class ExcelManager:
         return {
             "total": total_leidos,
             "agregados": registros_agregados,
-            "omitidos": max(0, total_leidos - registros_agregados)
+            "omitidos": max(0, total_leidos - registros_agregados),
         }
