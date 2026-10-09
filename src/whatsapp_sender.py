@@ -1209,44 +1209,68 @@ def escribir_descripcion(driver, message):
 # ============================================================# BOTÓN DE ENVÍO# ============================================================
 
 def boton_enviar_imagen(driver):
+    """Busca el envío de la vista previa, en español o inglés.
 
-    """Encuentra exclusivamente el botón de envío de la vista previa de foto."""
-
-    if not campo_descripcion(driver):
-
+    No utiliza el botón del editor principal ni envía si hay ambigüedad.
+    """
+    caption = campo_descripcion(driver)
+    if not caption:
         return False
 
-    botones = driver.find_elements(
-
-        By.CSS_SELECTOR,
-
-        '[role="button"][aria-label^="Send "]:has([data-icon="wds-ic-send-filled"])'
-
+    # WhatsApp cambia aria-label y el tipo de botón según versión/idioma.
+    # El icono de enviar y el contexto de la vista previa son más estables.
+    selectors = (
+        '[data-icon="wds-ic-send-filled"]',
+        '[data-icon="send"]',
+        '[data-testid="send"]',
+        '[data-testid="send-button"]',
+        'button[aria-label^="Send" i]',
+        'button[aria-label^="Enviar" i]',
+        '[role="button"][aria-label^="Send" i]',
+        '[role="button"][aria-label^="Enviar" i]',
     )
+    candidates = []
+    seen = set()
+    for selector in selectors:
+        for el in driver.find_elements(By.CSS_SELECTOR, selector):
+            try:
+                # Los iconos SVG suelen estar dentro del botón clicable.
+                clickable = driver.execute_script("""
+                    let el = arguments[0];
+                    return el.closest('button, [role="button"]') || el;
+                """, el)
+                if not clickable.is_displayed() or not clickable.is_enabled():
+                    continue
+                # No confundir con el botón de enviar texto del chat.
+                in_footer = driver.execute_script(
+                    "return !!arguments[0].closest('#main footer');", clickable
+                )
+                if in_footer:
+                    continue
+                # Debe compartir una sección de vista previa con la descripción.
+                in_preview = driver.execute_script("""
+                    const btn = arguments[0], caption = arguments[1];
+                    let p = caption;
+                    for (let i=0; p && i<9; i++, p=p.parentElement) {
+                        if (p.contains(btn) && !p.matches('#main, body, html'))
+                            return true;
+                    }
+                    return false;
+                """, clickable, caption)
+                if not in_preview:
+                    continue
+                if clickable.id not in seen:
+                    seen.add(clickable.id)
+                    candidates.append(clickable)
+            except (StaleElementReferenceException, WebDriverException):
+                continue
 
-    candidatos = []
-
-    for boton in botones:
-
-        try:
-
-            if boton.is_displayed() and boton.is_enabled():
-
-                candidatos.append(boton)
-
-        except StaleElementReferenceException:
-
-            continue
-
-    if len(candidatos) != 1:
-
-        logger.info('Botones de envío de foto encontrados: %s', len(candidatos))
-
+    if len(candidates) != 1:
+        logger.info('Botones de envío en vista previa: %s', len(candidates))
         return False
-
-    logger.info('Botón de envío identificado: %s', candidatos[0].get_attribute('aria-label'))
-
-    return candidatos[0]
+    logger.info('Botón de envío de fotografía encontrado: %s',
+                candidates[0].get_attribute('aria-label'))
+    return candidates[0]
 
 def mensajes_salientes(driver):
 
