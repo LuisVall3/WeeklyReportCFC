@@ -1,3 +1,4 @@
+
 name: Build Executable
 
 on:
@@ -7,32 +8,68 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout código
-      uses: actions/checkout@v4
+      - name: Checkout código
+        uses: actions/checkout@v4
 
-    - name: Configurar Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
 
-    - name: Instalar dependencias
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
 
-    - name: Compilar con PyInstaller (Modo Carpeta Ultrarrápido)
-      run: |
-        pyinstaller --noconsole --onedir --collect-data customtkinter --collect-binaries customtkinter app.py
+      - name: Verificar recursos visuales
+        shell: pwsh
+        run: |
+          $files = @(
+            "assets/favicon.ico",
+            "assets/novasource_logo.png"
+          )
+          foreach ($file in $files) {
+            if (-not (Test-Path $file)) {
+              throw "Falta el recurso: $file"
+            }
+          }
 
-    - name: Subir ejecutable como Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: CCTV-Weekly-Report-CFC-Windows
-        path: dist/app
+      - name: Compilar ejecutable
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --noconsole `
+            --onedir `
+            --name "WeeklyReportCFC" `
+            --icon "assets/favicon.ico" `
+            --add-data "assets;assets" `
+            --collect-data customtkinter `
+            --collect-binaries customtkinter `
+            app.py
+
+      - name: Comprimir aplicación completa
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "dist/WeeklyReportCFC/*" `
+            -DestinationPath "WeeklyReportCFC-Windows.zip" `
+            -Force
+
+      - name: Publicar ejecutable
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeeklyReportCFC-Windows
+          path: WeeklyReportCFC-Windows.zip
+          if-no-files-found: error
+          retention-days: 30
