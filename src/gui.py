@@ -8,46 +8,38 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk, ImageEnhance
 
+# Windows agrupa las ventanas Tk por identidad de aplicación.
+# Registrar un AppUserModelID propio antes de crear cualquier ventana.
+if sys.platform == "win32":
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "NovaSource.PowerServices.WeeklyReportCFC"
+        )
+    except (AttributeError, OSError) as exc:
+        print(f"No se pudo registrar el identificador de la aplicación: {exc}")
+
 # Configuración de tema Corporativo / Claro
 ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
 
 def aplicar_icono_ventana(window):
-    """Aplica el ícono corporativo desde assets/ según el sistema operativo (Windows/macOS)."""
+    """Aplica el favicon de NovaSource sin reemplazarlo por el logo grande."""
     base_dir = Path(__file__).resolve().parent.parent
-    ruta_png = base_dir / "assets" / "novasource_logo.png"
-    ruta_ico = base_dir / "assets" / "favicon.ico"
+    ico = base_dir / "assets" / "favicon.ico"
 
-    if sys.platform == "darwin":
-        def _cargar_mac():
-            if ruta_png.exists():
-                try:
-                    img_pil = Image.open(ruta_png)
-                    photo = ImageTk.PhotoImage(img_pil)
-                    window.tk.call('wm', 'iconphoto', window._w, photo)
-                    window._icon_photo = photo
-                except Exception as e:
-                    print(f"Error cargando icono en macOS: {e}")
-
-        window.after(200, _cargar_mac)
-
-    elif sys.platform.startswith("win"):
+    def _apply():
+        if not ico.is_file():
+            print(f"Falta el ícono: {ico}")
+            return
         try:
-            import ctypes
-            myappid = "novasource.weeklyreport.cfc.1.0"
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-        except Exception:
-            pass
+            # Para Windows, el ICO es el icono de la ventana y de la barra.
+            window.iconbitmap(default=str(ico))
+        except Exception as exc:
+            print(f"No se pudo cargar favicon.ico: {exc}")
 
-        def _cargar_win():
-            if ruta_ico.exists():
-                try:
-                    window.iconbitmap(str(ruta_ico))
-                except Exception:
-                    pass
-
-        window.after(200, _cargar_win)
+    window.after(150, _apply)
 
 
 def cargar_logo_fondo(ancho: int = 240, opacidad: float = 0.05) -> Optional[ctk.CTkImage]:
@@ -199,21 +191,67 @@ class MainWindow(ctk.CTk):
     def __init__(self, core_app):
         super().__init__()
         self.core_app = core_app
-
-        self.title("Gestión de Reportes Semanales - NovaSource")
-        self.geometry("950x680")
-        self.minsize(850, 600)
-        self.configure(fg_color="#F4F6F8")
-
+        self.title("NovaSource | Centro de Operaciones")
+        self.geometry("1200x780")
+        self.minsize(980, 650)
+        self.configure(fg_color="#F4F7FB")
         aplicar_icono_ventana(self)
         self.protocol("WM_DELETE_WINDOW", self._cerrar_aplicacion)
 
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
-
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(1, weight=1)
         self._crear_encabezado()
+        self._crear_navegacion()
+
+        self.contenido = ctk.CTkFrame(self, fg_color="#F4F7FB", corner_radius=0)
+        self.contenido.grid(row=1, column=1, sticky="nsew")
+        self.contenido.grid_rowconfigure(0, weight=1)
+        self.contenido.grid_columnconfigure(0, weight=1)
+
+        self.page_reports = ctk.CTkFrame(self.contenido, fg_color="transparent")
+        self.page_cctv = ctk.CTkFrame(self.contenido, fg_color="transparent")
+        for page in (self.page_reports, self.page_cctv):
+            page.grid(row=0, column=0, sticky="nsew")
+
         self._crear_panel_control()
         self._crear_panel_resumen_y_logs()
+        from .whatsapp_tab import WhatsAppTab
+        self.whatsapp_tab = WhatsAppTab(self.page_cctv)
+        self.whatsapp_tab.pack(fill="both", expand=True, padx=12, pady=12)
+        self._mostrar_pagina("reportes")
+
+    def _crear_navegacion(self):
+        nav = ctk.CTkFrame(self, fg_color="#FFFFFF", corner_radius=0,
+                           border_width=1, border_color="#E4EAF1", width=224)
+        nav.grid(row=1, column=0, sticky="nsew")
+        nav.grid_propagate(False)
+        ctk.CTkLabel(nav, text="ESPACIO DE TRABAJO", text_color="#8A98AA",
+                     font=ctk.CTkFont(size=10, weight="bold")).pack(
+                         anchor="w", padx=20, pady=(30, 12))
+        self.nav_reportes = ctk.CTkButton(
+            nav, text="▦   Reportes semanales", anchor="w", height=44,
+            corner_radius=9, font=ctk.CTkFont(size=13, weight="bold"),
+            command=lambda: self._mostrar_pagina("reportes"))
+        self.nav_reportes.pack(fill="x", padx=12, pady=4)
+        self.nav_cctv = ctk.CTkButton(
+            nav, text="▣   CCTV · WhatsApp", anchor="w", height=44,
+            corner_radius=9, font=ctk.CTkFont(size=13, weight="bold"),
+            command=lambda: self._mostrar_pagina("cctv"))
+        self.nav_cctv.pack(fill="x", padx=12, pady=4)
+        ctk.CTkLabel(nav, text="OPERACIONES CHILE", text_color="#94A3B8",
+                     font=ctk.CTkFont(size=10, weight="bold")).pack(
+                         side="bottom", anchor="w", padx=20, pady=22)
+
+    def _mostrar_pagina(self, pagina):
+        active, muted = "#E7F0FF", "#FFFFFF"
+        for btn, selected in ((self.nav_reportes, pagina == "reportes"),
+                              (self.nav_cctv, pagina == "cctv")):
+            btn.configure(fg_color=active if selected else muted,
+                          hover_color="#DCEAFF" if selected else "#F2F6FA",
+                          text_color="#1456A0" if selected else "#52647A")
+        (self.page_reports if pagina == "reportes" else self.page_cctv).tkraise()
+        self.lbl_contexto.configure(text="Reportes semanales" if pagina == "reportes"
+                                   else "Monitoreo CCTV · WhatsApp")
 
     def _cerrar_aplicacion(self):
         try:
@@ -224,55 +262,39 @@ class MainWindow(ctk.CTk):
             pass
 
     def _crear_encabezado(self):
-        """Header limpio con logo compacto, título y botón para ver el maestro."""
-        header_frame = ctk.CTkFrame(
-            self,
-            corner_radius=0,
-            fg_color="#FFFFFF",
-            height=55,
-            border_width=1,
-            border_color="#E0E0E0"
-        )
-        header_frame.grid(row=0, column=0, sticky="ew")
-
-        base_dir = Path(__file__).resolve().parent.parent
-        ruta_png = base_dir / "assets" / "novasource_logo.png"
-        
-        if ruta_png.exists():
+        header = ctk.CTkFrame(self, height=76, corner_radius=0,
+                              fg_color="#FFFFFF", border_width=1,
+                              border_color="#E4EAF1")
+        header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        header.grid_propagate(False)
+        base = Path(__file__).resolve().parent.parent
+        logo_path = base / "assets" / "novasource_logo.png"
+        if logo_path.is_file():
             try:
-                img = Image.open(ruta_png)
-                ancho_deseado = 45
-                ratio = ancho_deseado / float(img.size[0])
-                alto = int(float(img.size[1]) * ratio)
-                img_ctk = ctk.CTkImage(light_image=img, dark_image=img, size=(ancho_deseado, alto))
-                
-                lbl_logo_header = ctk.CTkLabel(header_frame, image=img_ctk, text="")
-                lbl_logo_header.pack(side="left", padx=(20, 8), pady=8)
-            except Exception:
-                pass
-
-        lbl_title = ctk.CTkLabel(
-            header_frame,
-            text="Consola de Monitoreo & Reportes",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="#0D47A1"
-        )
-        lbl_title.pack(side="left", padx=5, pady=14)
-
-        btn_ver_maestro = ctk.CTkButton(
-            header_frame,
-            text="👁️ Ver Maestro",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            height=32,
-            width=110,
-            fg_color="#EDF2F7",
-            hover_color="#E2E8F0",
-            text_color="#2D3748",
-            border_width=1,
-            border_color="#CBD5E1",
-            command=self._ver_previsualizacion_maestro
-        )
-        btn_ver_maestro.pack(side="right", padx=20, pady=11)
+                im = Image.open(logo_path).convert("RGBA")
+                self._header_logo = ctk.CTkImage(
+                    light_image=im, dark_image=im, size=(52, 52)
+                )
+                ctk.CTkLabel(header, image=self._header_logo, text="",
+                             width=58, height=58).pack(
+                    side="left", padx=(24, 16), pady=8
+                )
+            except Exception as exc:
+                print(f"No se pudo mostrar el logo: {exc}")
+        text_frame = ctk.CTkFrame(header, fg_color="transparent")
+        text_frame.pack(side="left", fill="y", pady=12)
+        ctk.CTkLabel(text_frame, text="NovaSource | Centro de Operaciones",
+                     text_color="#172B4D",
+                     font=ctk.CTkFont(size=19, weight="bold")
+                     ).pack(anchor="w")
+        self.lbl_contexto = ctk.CTkLabel(text_frame, text="Reportes semanales",
+                     text_color="#718096", font=ctk.CTkFont(size=11))
+        self.lbl_contexto.pack(anchor="w")
+        ctk.CTkButton(header, text="Ver Excel Maestro", width=154, height=37,
+                      corner_radius=8, fg_color="#EDF4FF", hover_color="#DCEAFF",
+                      text_color="#1456A0", font=ctk.CTkFont(size=12, weight="bold"),
+                      command=self._ver_previsualizacion_maestro).pack(
+                          side="right", padx=24)
 
     def _ver_previsualizacion_maestro(self):
         """Previsualización limpia y estilizada de la última hoja del Excel Maestro sin etiquetas Unnamed."""
@@ -407,132 +429,81 @@ class MainWindow(ctk.CTk):
             messagebox.showerror("Error de Lectura", f"No se pudo cargar la vista previa:\n\n{str(e)}")
 
     def _crear_panel_control(self):
-        """Panel de selección de archivo e inicio de procesamiento."""
-        control_frame = ctk.CTkFrame(
-            self,
-            corner_radius=8,
-            fg_color="#FFFFFF",
-            border_width=1,
-            border_color="#E0E0E0"
-        )
-        control_frame.grid(row=1, column=0, sticky="ew", padx=20, pady=(20, 10))
-
-        lbl_section = ctk.CTkLabel(
-            control_frame,
-            text="Carga de Reporte Semanal",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#1A252C"
-        )
-        lbl_section.pack(anchor="w", padx=20, pady=(12, 6))
-
-        file_select_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
-        file_select_frame.pack(fill="x", padx=20, pady=(0, 15))
-
+        card = ctk.CTkFrame(self.page_reports, fg_color="#FFFFFF", corner_radius=14,
+                            border_width=1, border_color="#E4EAF1")
+        card.pack(fill="x", padx=20, pady=(22, 14))
+        ctk.CTkLabel(card, text="Importar reporte semanal",
+                     font=ctk.CTkFont(size=17, weight="bold"),
+                     text_color="#172B4D").pack(anchor="w", padx=22, pady=(19, 2))
+        ctk.CTkLabel(card, text="Selecciona el archivo Excel que deseas procesar y consolidar.",
+                     font=ctk.CTkFont(size=12), text_color="#718096").pack(
+                         anchor="w", padx=22, pady=(0, 15))
+        line = ctk.CTkFrame(card, fg_color="transparent")
+        line.pack(fill="x", padx=22, pady=(0, 22))
         self.entry_reporte = ctk.CTkEntry(
-            file_select_frame,
-            placeholder_text="Seleccionar archivo semanal a procesar (.xlsx)...",
-            fg_color="#F8F9FA",
-            border_color="#CED4DA",
-            text_color="#1A252C",
-            height=36
-        )
-        self.entry_reporte.pack(side="left", fill="x", expand=True, padx=(0, 10))
-
-        btn_browse = ctk.CTkButton(
-            file_select_frame,
-            text="Examinar...",
-            width=100,
-            height=36,
-            fg_color="#E2E8F0",
-            hover_color="#CBD5E1",
-            text_color="#1E293B",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            command=self._seleccionar_reporte
-        )
-        btn_browse.pack(side="left", padx=(0, 10))
-
+            line, placeholder_text="Ruta del reporte semanal (.xlsx o .xlsm)",
+            height=42, corner_radius=8, fg_color="#F8FAFD",
+            border_color="#D8E2EF", text_color="#172B4D")
+        self.entry_reporte.pack(side="left", fill="x", expand=True, padx=(0, 9))
+        ctk.CTkButton(line, text="Examinar", width=100, height=42,
+                      fg_color="#EAF1F9", hover_color="#DCE7F4",
+                      text_color="#24527A", command=self._seleccionar_reporte).pack(
+                          side="left", padx=(0, 9))
         self.btn_procesar = ctk.CTkButton(
-            file_select_frame,
-            text="Procesar Reporte",
+            line, text="Procesar reporte", width=156, height=42,
+            fg_color="#1565B8", hover_color="#0F4F95", corner_radius=8,
             font=ctk.CTkFont(size=12, weight="bold"),
-            height=36,
-            fg_color="#0D47A1",
-            hover_color="#0A3880",
-            text_color="#FFFFFF",
-            command=self._ejecutar_procesamiento
-        )
-        self.btn_procesar.pack(side="right")
+            command=self._ejecutar_procesamiento)
+        self.btn_procesar.pack(side="left")
 
     def _crear_panel_resumen_y_logs(self):
-        """Métricas rápidas y consola de auditoría."""
-        main_container = ctk.CTkFrame(self, fg_color="transparent")
-        main_container.grid(row=2, column=0, sticky="nsew", padx=20, pady=(0, 20))
-        main_container.grid_columnconfigure(0, weight=1)
-        main_container.grid_rowconfigure(1, weight=1)
-
-        # --- PANEL DE MÉTRICAS / TARJETAS ---
-        cards_frame = ctk.CTkFrame(main_container, fg_color="transparent")
-        cards_frame.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        cards_frame.grid_columnconfigure((0, 1, 2), weight=1)
-
-        # Tarjeta 1
-        self.card_total = ctk.CTkFrame(cards_frame, fg_color="#FFFFFF", corner_radius=8, border_width=1, border_color="#E0E0E0")
-        self.card_total.grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        ctk.CTkLabel(self.card_total, text="TOTAL LEÍDOS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#5F6D7A").pack(pady=(10, 0))
-        self.lbl_num_total = ctk.CTkLabel(self.card_total, text="0", font=ctk.CTkFont(size=22, weight="bold"), text_color="#1A252C")
-        self.lbl_num_total.pack(pady=(0, 10))
-
-        # Tarjeta 2
-        self.card_exito = ctk.CTkFrame(cards_frame, fg_color="#FFFFFF", corner_radius=8, border_width=1, border_color="#E0E0E0")
-        self.card_exito.grid(row=0, column=1, padx=6, sticky="ew")
-        ctk.CTkLabel(self.card_exito, text="AGREGADOS / ACTUALIZADOS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#2E7D32").pack(pady=(10, 0))
-        self.lbl_num_exito = ctk.CTkLabel(self.card_exito, text="0", font=ctk.CTkFont(size=22, weight="bold"), text_color="#2E7D32")
-        self.lbl_num_exito.pack(pady=(0, 10))
-
-        # Tarjeta 3
-        self.card_omitidos = ctk.CTkFrame(cards_frame, fg_color="#FFFFFF", corner_radius=8, border_width=1, border_color="#E0E0E0")
-        self.card_omitidos.grid(row=0, column=2, padx=(6, 0), sticky="ew")
-        ctk.CTkLabel(self.card_omitidos, text="OMITIDOS / SIN CAMBIOS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#C62828").pack(pady=(10, 0))
-        self.lbl_num_omitidos = ctk.CTkLabel(self.card_omitidos, text="0", font=ctk.CTkFont(size=22, weight="bold"), text_color="#C62828")
-        self.lbl_num_omitidos.pack(pady=(0, 10))
-
-        # --- CONSOLA DE AUDITORÍA / LOGS ---
-        log_frame = ctk.CTkFrame(
-            main_container,
-            fg_color="#FFFFFF",
-            corner_radius=8,
-            border_width=1,
-            border_color="#E0E0E0"
+        container = ctk.CTkFrame(self.page_reports, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_rowconfigure(1, weight=1)
+        cards = ctk.CTkFrame(container, fg_color="transparent")
+        cards.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        cards.grid_columnconfigure((0, 1, 2), weight=1)
+        metrics = (
+            ("TOTAL LEÍDOS", "lbl_num_total", "#172B4D"),
+            ("AGREGADOS / ACTUALIZADOS", "lbl_num_exito", "#15803D"),
+            ("OMITIDOS / SIN CAMBIOS", "lbl_num_omitidos", "#C24135"),
         )
-        log_frame.grid(row=1, column=0, sticky="nsew")
-
-        lbl_console = ctk.CTkLabel(
-            log_frame,
-            text="Registro de Auditoría y Eventos",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color="#5F6D7A"
-        )
-        lbl_console.pack(anchor="w", padx=16, pady=(10, 6))
-
-        logo_watermark = cargar_logo_fondo(ancho=260, opacidad=0.06)
-        if logo_watermark:
-            lbl_watermark = ctk.CTkLabel(log_frame, image=logo_watermark, text="", fg_color="transparent")
-            lbl_watermark.place(relx=0.5, rely=0.55, anchor="center")
-            lbl_watermark.lower()
-
+        for index, (label, attr, color) in enumerate(metrics):
+            card = ctk.CTkFrame(cards, fg_color="#FFFFFF", corner_radius=12,
+                                border_width=1, border_color="#E4EAF1")
+            card.grid(row=0, column=index, sticky="ew",
+                      padx=(0, 8) if index == 0 else ((8, 0) if index == 2 else 8))
+            ctk.CTkLabel(card, text=label, text_color="#718096",
+                         font=ctk.CTkFont(size=10, weight="bold")).pack(
+                             anchor="w", padx=19, pady=(15, 2))
+            value = ctk.CTkLabel(card, text="0", text_color=color,
+                                 font=ctk.CTkFont(size=29, weight="bold"))
+            value.pack(anchor="w", padx=19, pady=(0, 13))
+            setattr(self, attr, value)
+        logs_card = ctk.CTkFrame(container, fg_color="#FFFFFF", corner_radius=12,
+                                 border_width=1, border_color="#E4EAF1")
+        logs_card.grid(row=1, column=0, sticky="nsew")
+        head = ctk.CTkFrame(logs_card, fg_color="transparent")
+        head.pack(fill="x", padx=18, pady=(14, 9))
+        ctk.CTkLabel(head, text="Registro de actividad",
+                     font=ctk.CTkFont(size=14, weight="bold"),
+                     text_color="#172B4D").pack(side="left")
+        ctk.CTkButton(head, text="Limpiar", width=75, height=28,
+                      fg_color="#F1F5F9", hover_color="#E2E8F0",
+                      text_color="#52647A", command=self._limpiar_logs).pack(side="right")
         self.txt_logs = ctk.CTkTextbox(
-            log_frame,
-            fg_color="transparent",
-            text_color="#24292E",
+            logs_card, fg_color="#F8FAFD", text_color="#334155",
             font=ctk.CTkFont(family="Consolas", size=11),
-            wrap="word",
-            border_width=1,
-            border_color="#E2E8F0",
-            state="disabled"
-        )
-        self.txt_logs.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-
+            border_width=1, border_color="#E4EAF1", corner_radius=9,
+            wrap="word", state="disabled")
+        self.txt_logs.pack(fill="both", expand=True, padx=18, pady=(0, 18))
         self.log("SISTEMA LISTO. Selecciona un archivo semanal para iniciar auditoría.")
+
+    def _limpiar_logs(self):
+        self.txt_logs.configure(state="normal")
+        self.txt_logs.delete("1.0", "end")
+        self.txt_logs.configure(state="disabled")
 
     def log(self, mensaje: str):
         """Escribe un mensaje en la consola de la interfaz de forma segura."""

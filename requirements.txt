@@ -1,6 +1,18 @@
+# Interfaz gráfica
+customtkinter
+Pillow
+
+# Automatización de WhatsApp Web
+selenium
+pyautogui
+pyperclip
+
+# Procesamiento de Excel
 pandas
 openpyxl
-customtkinter
+
+# Integración con Outlook (Windows)
+pywin32
+
+# Generación de ejecutable
 pyinstaller
-python-dateutil
-Pillow
