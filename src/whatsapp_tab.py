@@ -31,7 +31,7 @@ PARQUES = [
     'CL114 Rauquen', 'CL132 Santa Carolina', 'CL120 Santa Fe',
     'CL125 Villa Alegre', 'CL109 Villa Cruz', 'CL118 Villa Seca',
 ]
-OPERADORES = ['Bastían Contreras', 'Anais Yañez', 'Katherine Garate', 'Matías Guzmán']
+OPERADORES = ['Bastían Contreras', 'Sebastián Davila', 'Anais Yañez', 'Katherine Garate', 'Matías Guzmán']
 BG = '#F2F5FA'
 WHITE = '#FFFFFF'
 NAVY = '#183B60'
@@ -466,9 +466,9 @@ class WhatsAppTab(ctk.CTkFrame):
             f'⚡ *Parque:* {self.park.get()}\n'
             f'📅 *Fecha:* {self.date.get().strip()}\n'
             f'🕒 *Hora:* {self.time.get().strip()}\n'
-            f'👤 *Operador CCTV:* {self.operador_cctv.get()}\n'
             f'📸 *Cámaras disponibles:* {count}/{total}\n'
             f'📌 *Novedades:* {novedades if novedades else "Sin novedades"}'
+            f'👤 *Operador CCTV:* {self.operador_cctv.get()}\n'
         )
         self.message.delete('1.0', 'end')
         self.message.insert('1.0', message)
