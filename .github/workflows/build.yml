@@ -43,6 +43,7 @@ jobs:
             }
           }
 
+      
       - name: Compilar ejecutable
         shell: pwsh
         run: |
@@ -54,8 +55,15 @@ jobs:
             --name "WeeklyReportCFC" `
             --icon "assets/favicon.ico" `
             --add-data "assets;assets" `
-            --collect-data customtkinter `
-            --collect-binaries customtkinter `
+            --collect-all customtkinter `
+            --collect-all selenium `
+            --collect-all pyautogui `
+            --collect-all pyperclip `
+            --hidden-import selenium.webdriver.chrome.options `
+            --hidden-import selenium.webdriver.chrome.service `
+            --hidden-import selenium.webdriver.common.by `
+            --hidden-import selenium.webdriver.support.ui `
+            --hidden-import selenium.webdriver.support.expected_conditions `
             app.py
 
       - name: Comprimir aplicación completa
