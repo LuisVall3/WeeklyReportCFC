@@ -24,10 +24,18 @@ ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
 
+def resource_path(relative_path: str) -> Path:
+    """Ruta de recursos en desarrollo y en ejecutables de PyInstaller."""
+    if getattr(sys, "frozen", False):
+        base_dir = Path(sys._MEIPASS)
+    else:
+        base_dir = Path(__file__).resolve().parent.parent
+    return base_dir / relative_path
+
+
 def aplicar_icono_ventana(window):
     """Aplica el favicon de NovaSource sin reemplazarlo por el logo grande."""
-    base_dir = Path(__file__).resolve().parent.parent
-    ico = base_dir / "assets" / "favicon.ico"
+    ico = resource_path("assets/favicon.ico")
 
     def _apply():
         if not ico.is_file():
@@ -44,8 +52,7 @@ def aplicar_icono_ventana(window):
 
 def cargar_logo_fondo(ancho: int = 240, opacidad: float = 0.05) -> Optional[ctk.CTkImage]:
     """Carga el logo y le aplica una opacidad muy suave (marca de agua)."""
-    base_dir = Path(__file__).resolve().parent.parent
-    ruta_png = base_dir / "assets" / "novasource_logo.png"
+    ruta_png = resource_path("assets/novasource_logo.png")
 
     if not ruta_png.exists():
         return None
@@ -267,8 +274,7 @@ class MainWindow(ctk.CTk):
                               border_color="#E4EAF1")
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
         header.grid_propagate(False)
-        base = Path(__file__).resolve().parent.parent
-        logo_path = base / "assets" / "novasource_logo.png"
+        logo_path = resource_path("assets/novasource_logo.png")
         if logo_path.is_file():
             try:
                 im = Image.open(logo_path).convert("RGBA")
