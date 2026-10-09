@@ -101,15 +101,18 @@ class ExcelManager:
         invalidas = df["dt"].isna()
         if invalidas.any():
             raise ValueError(f"Hay {invalidas.sum()} fechas inválidas; no se modificó el Maestro.")
+        # Los eventos NVR sin región no bloquean las alarmas válidas.
+        # Se contabilizan como excepciones; jamás se asignan a un parque arbitrario.
         sin_parque = df[col_region].isna() | df[col_region].astype(str).str.strip().eq("")
-        if sin_parque.any():
-            raise ValueError(f"Hay {sin_parque.sum()} alarmas sin parque; no se modificó el Maestro.")
+        self.ultimo_sin_region = int(sin_parque.sum())
+        self.ultimo_total_leido = len(df)
         equivalencias = {self._normalizar_nombre(k): v for k, v in self.EQUIVALENCIAS_PARQUES.items()}
         nombres_oficiales = {self._normalizar_nombre(v): v for v in self.EQUIVALENCIAS_PARQUES.values()}
         def mapear(valor):
             clave = self._normalizar_nombre(valor)
             return equivalencias.get(clave, nombres_oficiales.get(clave, str(valor).strip()))
         df["Parque_Oficial"] = df[col_region].apply(mapear)
+        df.loc[sin_parque, "Parque_Oficial"] = None
         fechas_turnos = df["dt"].apply(self._calcular_turno_y_fecha)
         df["Fecha_Reporte"] = [x[0] for x in fechas_turnos]
         df["Turno"] = [x[1] for x in fechas_turnos]
@@ -120,7 +123,7 @@ class ExcelManager:
         viernes_inicio = semanas.pop()
         # Identificador ISO correspondiente al lunes de la semana del viernes inicial.
         numero_semana = (viernes_inicio - timedelta(days=4)).isocalendar().week
-        conteo = df.groupby(["Fecha_Reporte", "Parque_Oficial", "Turno"]).size().unstack(fill_value=0)
+        conteo = df.loc[~sin_parque].groupby(["Fecha_Reporte", "Parque_Oficial", "Turno"]).size().unstack(fill_value=0)
         for col in ("DAY", "NIGHT"):
             if col not in conteo.columns:
                 conteo[col] = 0
@@ -128,8 +131,8 @@ class ExcelManager:
 
     @staticmethod
     def _rango_hoja(ws):
-        """Extrae fechas reales de B1; evita identificar semanas solo por WW."""
-        valor = ws.cell(1, 2).value
+        """Extrae fechas reales de A1; evita identificar semanas solo por WW."""
+        valor = ws.cell(1, 1).value
         if not isinstance(valor, str):
             return None
         coincidencia = re.search(r"(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})", valor)
@@ -142,7 +145,7 @@ class ExcelManager:
             return None
 
     def _preparar_encabezados_fechas(self, ws, viernes_inicio: datetime.date):
-        """Escribe el rango semanal en B1 y formatea las columnas B-O en Fila 2
+        """Escribe el rango semanal en A1 y formatea las columnas B-O en Fila 2
 
         siguiendo el estilo de la plantilla: 'Alarms on [Día] [Número Día] Day / Night'
         """
@@ -151,7 +154,7 @@ class ExcelManager:
         # 1. Rango de fecha en la Fila 1 (ej: 07-08-2026 to 13-08-2026)
         ws.cell(
             row=1,
-            column=2,
+            column=1,
             value=f"{viernes_inicio.strftime('%d-%m-%Y')} to {jueves_cierre.strftime('%d-%m-%Y')}",
         )
 
@@ -175,26 +178,27 @@ class ExcelManager:
         df_resumen, numero_semana, viernes_inicio = self.procesar_reporte_alarmas(archivo_nuevo)
         jueves = viernes_inicio + timedelta(days=6)
         wb = openpyxl.load_workbook(self.archivo_maestro)
+        log(f"EXCEL: {self.ultimo_total_leido} eventos leídos; {self.ultimo_sin_region} sin región (excluidos y reportados).")
         try:
-            # Primero identificar por fecha REAL, no solo por número de semana.
-            for ws in wb.worksheets:
-                if ws.title == self.NOMBRE_HOJA_PLANTILLA:
-                    continue
-                rango = self._rango_hoja(ws)
-                if rango == (viernes_inicio, jueves):
-                    log(f"EXCEL: Semana {viernes_inicio:%d/%m/%Y}–{jueves:%d/%m/%Y} ya existe en '{ws.title}'. No se modificó.")
-                    return {"total": int(df_resumen[["DAY", "NIGHT"]].sum().sum()),
-                            "agregados": 0, "omitidos": 0, "existente": True}
-
-            # Si hay una hoja con el mismo WW y encabezado no interpretable,
-            # bloquear para no sobrescribir ni crear una semana ambigua.
-            patron = re.compile(rf".*WW\s*0?{numero_semana}$", re.IGNORECASE)
-            for ws in wb.worksheets:
-                if patron.fullmatch(ws.title) and ws.title != self.NOMBRE_HOJA_PLANTILLA:
-                    raise ValueError(
-                        f"Existe '{ws.title}' con el mismo WW pero rango de fechas distinto o no verificable. "
-                        "Revisa el Maestro manualmente; no se modificó.")
-
+            # Identificar la hoja correspondiente, incluso si A1 estaba mal históricamente.
+            hojas_fecha = [ws for ws in wb.worksheets
+                           if ws.title != self.NOMBRE_HOJA_PLANTILLA
+                           and self._rango_hoja(ws) == (viernes_inicio, jueves)]
+            if len(hojas_fecha) > 1:
+                raise ValueError("Hay varias hojas para el mismo período; revisión manual requerida.")
+            nombre = f"Monitoreo WW {numero_semana:02d}"
+            if hojas_fecha:
+                ws_destino = hojas_fecha[0]
+            elif nombre in wb.sheetnames:
+                ws_destino = wb[nombre]
+                rango_existente = self._rango_hoja(ws_destino)
+                if rango_existente is not None and rango_existente != (viernes_inicio, jueves):
+                    # Si A1 es incorrecto, verificar las fechas del encabezado B2:O2.
+                    encabezado = str(ws_destino.cell(2, 2).value or "")
+                    if not re.search(rf"\bFriday\s+{viernes_inicio.day}\b", encabezado, re.I):
+                        raise ValueError(f"'{nombre}' tiene otro período y encabezados incompatibles; no se modificó.")
+            else:
+                ws_destino = None
             if self.NOMBRE_HOJA_PLANTILLA not in wb.sheetnames:
                 raise ValueError("Falta la hoja PLANTILLA. No se creará una hoja desde datos históricos.")
             hoja_base = wb[self.NOMBRE_HOJA_PLANTILLA]
@@ -218,16 +222,26 @@ class ExcelManager:
                 raise ValueError("La PLANTILLA no tiene parques en la columna A.")
             presentes = {self._normalizar_nombre(p) for p in df_resumen["Parque_Oficial"]}
             desconocidos = sorted(presentes - set(parques))
+            # La plantilla define los únicos parques contabilizables.
+            excluidos_parque = df_resumen[df_resumen["Parque_Oficial"].map(self._normalizar_nombre).isin(desconocidos)]
+            total_excluidos_parque = int(excluidos_parque[["DAY", "NIGHT"]].sum().sum())
             if desconocidos:
-                raise ValueError("Parques del reporte no encontrados en PLANTILLA: " + ", ".join(desconocidos) + ". No se modificó el Maestro.")
+                log("EXCEL: Parques no incluidos en Maestro (excluidos): " + ", ".join(desconocidos))
+            df_resumen = df_resumen[~df_resumen["Parque_Oficial"].map(self._normalizar_nombre).isin(desconocidos)].copy()
+            total_omitidos = self.ultimo_sin_region + total_excluidos_parque
+            log(f"EXCEL: {total_omitidos} eventos excluidos ({self.ultimo_sin_region} sin región, {total_excluidos_parque} de parques fuera de plantilla).")
 
-            nombre = f"Monitoreo WW {numero_semana:02d}"
-            if nombre in wb.sheetnames:
-                raise ValueError(f"Ya existe una hoja '{nombre}'. No se modificó el Maestro.")
-            ws = wb.copy_worksheet(hoja_base)
-            ws.title = nombre
+            if ws_destino is None:
+                ws = wb.copy_worksheet(hoja_base)
+                ws.title = nombre
+                creado = True
+            else:
+                ws = ws_destino
+                creado = False
+                log(f"EXCEL: Actualizando semana existente '{ws.title}' (sin sumar duplicados).")
             self._preparar_encabezados_fechas(ws, viernes_inicio)
-            # Iniciar los 14 turnos a cero únicamente en la hoja nueva.
+            # Reemplazar los conteos de la semana importada, incluso cuando son cero.
+            # Solo tocar las filas de parques existentes en la plantilla.
             for fila in parques.values():
                 for col in range(2, 16):
                     ws.cell(fila, col, 0)
@@ -251,7 +265,7 @@ class ExcelManager:
                 wb.save(temporal)
                 comprobacion = openpyxl.load_workbook(temporal, read_only=True)
                 try:
-                    if nombre not in comprobacion.sheetnames:
+                    if ws.title not in comprobacion.sheetnames:
                         raise ValueError("No se pudo verificar la hoja creada.")
                 finally:
                     comprobacion.close()
@@ -262,7 +276,7 @@ class ExcelManager:
             finally:
                 if os.path.exists(temporal):
                     os.unlink(temporal)
-            log(f"EXCEL: Creada '{nombre}' ({viernes_inicio:%d/%m/%Y} al {jueves:%d/%m/%Y}); {total} alarmas. Respaldo: {respaldo.name}")
-            return {"total": total, "agregados": total, "omitidos": 0, "existente": False}
+            log(f"EXCEL: {'Creada' if creado else 'Actualizada'} '{ws.title}' ({viernes_inicio:%d/%m/%Y} al {jueves:%d/%m/%Y}); {total} alarmas. Respaldo: {respaldo.name}")
+            return {"total": self.ultimo_total_leido, "agregados": total, "omitidos": total_omitidos, "existente": not creado}
         finally:
             wb.close()
