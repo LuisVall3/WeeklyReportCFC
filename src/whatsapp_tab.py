@@ -930,9 +930,9 @@ class WhatsAppTab(ctk.CTkFrame):
 
             f'📸 *Cámaras disponibles:* {count}/{total}\n'
 
-            f'📌 *Novedades:* {novedades if novedades else "Sin novedades"}'
+            f'📌 *Novedades:* {novedades if novedades else "Sin novedades"}\n'
 
-            f'👤 *Operador CCTV:* {self.operador_cctv.get()}\n'
+            f'👤 *Operador CCTV:* {self.operador_cctv.get()}'
 
         )
 
