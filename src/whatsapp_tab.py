@@ -15,6 +15,7 @@ import logging
 import re
 
 import threading
+import shutil
 
 import customtkinter as ctk
 
@@ -24,10 +25,10 @@ from PIL import Image, ImageGrab
 
 
 
-ROOT = Path(__file__).resolve().parent.parent
+from src.paths import APP_DIR as ROOT
 
 SETTINGS = ROOT / 'whatsapp_settings.json'
-DEFAULT_GROUP = 'Emergencias e intrusiones CCTV'
+DEFAULT_GROUP = 'Emergencias e intruciones CCTV'
 
 ERROR_LOG_DIR = ROOT / 'data' / 'Logs'
 
@@ -452,6 +453,7 @@ class WhatsAppTab(ctk.CTkFrame):
         self.preview_image = None
 
         self._sending = False
+        self._report_queue = {}
 
         self._build()
 
@@ -719,6 +721,15 @@ class WhatsAppTab(ctk.CTkFrame):
                                    text_color=MUTED, height=22)
 
         self.status.grid(row=1, column=0, pady=(0, 9))
+        queue_actions = ctk.CTkFrame(footer, fg_color='transparent')
+        queue_actions.grid(row=2, column=0, sticky='ew', padx=24, pady=(0, 12))
+        queue_actions.grid_columnconfigure((0, 1), weight=1)
+        self.queue_button = ctk.CTkButton(queue_actions, text='Agregar parque a la cola',
+                                          command=self.add_to_queue, fg_color=NAVY)
+        self.queue_button.grid(row=0, column=0, sticky='ew', padx=(0, 6))
+        self.batch_button = ctk.CTkButton(queue_actions, text='Enviar cola (0)',
+                                          command=self.send_queue, fg_color=BLUE)
+        self.batch_button.grid(row=0, column=1, sticky='ew', padx=(6, 0))
 
 
 
@@ -874,6 +885,111 @@ class WhatsAppTab(ctk.CTkFrame):
 
 
 
+    def add_to_queue(self):
+        """Guarda una copia independiente de la imagen y datos del parque."""
+        if self._sending:
+            return
+        park = self.park.get()
+        total = total_camaras_parque(park)
+        try:
+            datetime.strptime(self.date.get().strip() + ' ' + self.time.get().strip(), '%d-%m-%Y %H:%M')
+            count = int(self.cameras.get())
+            if total is None or not 0 <= count <= total:
+                raise ValueError()
+        except ValueError:
+            messagebox.showerror('Datos inválidos', 'Revisa fecha, hora y cámaras disponibles.')
+            return
+        novedades = self.novedades.get('1.0', 'end-1c').strip()
+        if count < total and not novedades:
+            messagebox.showwarning('Novedad obligatoria', 'Indica las cámaras fuera de servicio antes de agregar el parque.')
+            return
+        if self.image is None:
+            messagebox.showwarning('Imagen requerida', 'Adjunta una imagen para cada parque.')
+            return
+        if park in self._report_queue and not messagebox.askyesno('Reemplazar parque',
+                f'{park} ya está en la cola. ¿Reemplazar su reporte?'):
+            return
+        folder = ROOT / 'data' / 'CapturasCCTV' / 'Cola'
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f'{park.split()[0]}_{uuid4().hex}.png'
+        try:
+            self.image.save(path, format='PNG')
+        except OSError as exc:
+            messagebox.showerror('Imagen', str(exc))
+            return
+        message = (
+            f'⚡ *Parque:* {park}\n'
+            f'📅 *Fecha:* {self.date.get().strip()}\n'
+            f'🕒 *Hora:* {self.time.get().strip()}\n'
+            f'📸 *Cámaras disponibles:* {count}/{total}\n'
+            f'📌 *Novedades:* {novedades or "Sin novedades"}\n'
+            f'👤 *Operador CCTV:* {self.operador_cctv.get()}\n'
+        )
+        self._report_queue[park] = {'park': park, 'message': message, 'image_path': str(path)}
+        self.batch_button.configure(text=f'Enviar cola ({len(self._report_queue)})')
+        self.status.configure(text=f'{len(self._report_queue)} de {len(PARQUES)} parques preparados')
+
+    def send_queue(self):
+        if self._sending:
+            return
+        if not self._report_queue:
+            messagebox.showwarning('Cola vacía', 'Agrega primero los reportes de los parques.')
+            return
+        if len(self._report_queue) != len(PARQUES):
+            if not messagebox.askyesno('Parques pendientes',
+                    f'Hay {len(self._report_queue)} de {len(PARQUES)} parques preparados. ¿Enviar solamente los preparados?'):
+                return
+        group = self.group.get().strip()
+        if not group:
+            messagebox.showerror('Grupo requerido', 'Indica el grupo de WhatsApp.')
+            return
+        if not messagebox.askyesno('Confirmar envío',
+                f'¿Enviar {len(self._report_queue)} reportes independientes a «{group}»?'):
+            return
+        reports = list(self._report_queue.values())
+        self._sending = True
+        self.batch_button.configure(state='disabled', text='Enviando cola...')
+        self.queue_button.configure(state='disabled')
+        self.send_button.configure(state='disabled')
+        self.status.configure(text='Iniciando WhatsApp Web...')
+
+        def progress(result):
+            self.after(0, lambda r=result: self.status.configure(
+                text=f"{r['park']}: {r['status']}"))
+
+        def worker():
+            try:
+                from .whatsapp_sender import send_reports_batch
+                results = send_reports_batch(group, reports, on_progress=progress)
+                self.after(0, lambda r=results: self._finish_queue(r, None))
+            except Exception as exc:
+                incidente = _registrar_error_cctv(exc, 'LOTE', group, None)
+                self.after(0, lambda code=incidente: self._finish_queue(None, code))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_queue(self, results, error_code):
+        self._sending = False
+        self.batch_button.configure(state='normal')
+        self.queue_button.configure(state='normal')
+        self.send_button.configure(state='normal')
+        if error_code:
+            self.batch_button.configure(text=f'Enviar cola ({len(self._report_queue)})')
+            self.status.configure(text='Error al iniciar o procesar la tanda')
+            messagebox.showerror('Envío detenido', f'Código: {error_code}. Revisa WhatsApp antes de reintentar.')
+            return
+        sent = [r for r in results if r['status'] in ('enviado', 'procesado')]
+        uncertain = [r for r in results if r['status'] == 'sin_confirmar']
+        for item in sent:
+            self._report_queue.pop(item['park'], None)
+        self.batch_button.configure(text=f'Enviar cola ({len(self._report_queue)})')
+        self.status.configure(text=f'{len(sent)} procesados; {len(self._report_queue)} pendientes o sin confirmar')
+        if uncertain:
+            messagebox.showwarning('Revisión necesaria',
+                f'{len(sent)} procesados. El reporte de {uncertain[0]["park"]} quedó incierto. '
+                'Revisa el chat antes de cualquier reintento; puede haberse enviado.')
+        else:
+            messagebox.showinfo('Tanda finalizada', f'{len(sent)} reportes procesados. Revisa WhatsApp para comprobar su entrega.')
+
     def send_automated(self):
 
         if self._sending:
@@ -932,7 +1048,7 @@ class WhatsAppTab(ctk.CTkFrame):
 
             f'📌 *Novedades:* {novedades if novedades else "Sin novedades"}\n'
 
-            f'👤 *Operador CCTV:* {self.operador_cctv.get()}'
+            f'👤 *Operador CCTV:* {self.operador_cctv.get()}\n'
 
         )
 

@@ -14,7 +14,7 @@ if sys.platform == "win32":
     try:
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "NovaSource.PowerServices.WeeklyReportCFC"
+            "NovaSource.PowerServices.NovaCommandCCTV"
         )
     except (AttributeError, OSError) as exc:
         print(f"No se pudo registrar el identificador de la aplicación: {exc}")
@@ -80,7 +80,7 @@ class SetupDialog(ctk.CTk):
         super().__init__()
         self.config_manager = config_manager
 
-        self.title("Configuración Inicial - NovaSource CFC")
+        self.title("Configuración Inicial - NovaCommand CCTV")
         self.geometry("580x380")
         self.resizable(False, False)
         self.configure(fg_color="#F4F6F8")
@@ -198,7 +198,7 @@ class MainWindow(ctk.CTk):
     def __init__(self, core_app):
         super().__init__()
         self.core_app = core_app
-        self.title("NovaSource | Centro de Operaciones")
+        self.title("NovaCommand CCTV | NovaSource Power Services")
         self.geometry("1200x780")
         self.minsize(980, 650)
         self.configure(fg_color="#F4F7FB")
@@ -289,7 +289,7 @@ class MainWindow(ctk.CTk):
                 print(f"No se pudo mostrar el logo: {exc}")
         text_frame = ctk.CTkFrame(header, fg_color="transparent")
         text_frame.pack(side="left", fill="y", pady=12)
-        ctk.CTkLabel(text_frame, text="NovaSource | Centro de Operaciones",
+        ctk.CTkLabel(text_frame, text="NovaCommand CCTV | NovaSource Power Services",
                      text_color="#172B4D",
                      font=ctk.CTkFont(size=19, weight="bold")
                      ).pack(anchor="w")

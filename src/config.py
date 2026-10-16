@@ -7,12 +7,13 @@ Guarda y carga las rutas en config.json.
 
 import json
 from pathlib import Path
+from src.paths import APP_DIR
 
 
 class ConfigManager:
 
     def __init__(self, config_file: str = "config.json"):
-        self.config_path = Path(config_file)
+        self.config_path = APP_DIR / config_file if not Path(config_file).is_absolute() else Path(config_file)
         self.config = {
             "rutas": {
                 "maestro": "",

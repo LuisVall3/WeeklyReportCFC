@@ -16,13 +16,13 @@ VSVersionInfo(
         StringTable(
           u'040904B0',
           [
-            StringStruct(u'CompanyName', u'LuisVall3'),
-            StringStruct(u'FileDescription', u'Carbon Free Importer - NovaSource Power'),
+            StringStruct(u'CompanyName', u'NovaSource Power Services'),
+            StringStruct(u'FileDescription', u'NovaCommand CCTV - NovaSource Power Services'),
             StringStruct(u'FileVersion', u'1.0.0.0'),
-            StringStruct(u'InternalName', u'CarbonFreeImporter'),
+            StringStruct(u'InternalName', u'NovaCommandCCTV'),
             StringStruct(u'LegalCopyright', u'© 2026 LuisVall3. Todos los derechos reservados.'),
-            StringStruct(u'OriginalFilename', u'CarbonFreeImporter.exe'),
-            StringStruct(u'ProductName', u'Carbon Free Importer'),
+            StringStruct(u'OriginalFilename', u'NovaCommandCCTV.exe'),
+            StringStruct(u'ProductName', u'NovaCommand CCTV'),
             StringStruct(u'ProductVersion', u'1.0.0.0'),
             StringStruct(u'Comments', u'Desarrollado por LuisVall3 para NovaSource Power Services')
           ]
