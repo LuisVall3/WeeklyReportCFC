@@ -199,9 +199,9 @@ class MainWindow(ctk.CTk):
         super().__init__()
         self.core_app = core_app
         self.title("NovaCommand CCTV | NovaSource Power Services")
-        self.geometry("1200x780")
-        self.minsize(980, 650)
-        self.configure(fg_color="#F4F7FB")
+        self.geometry("1280x820")
+        self.minsize(1000, 680)
+        self.configure(fg_color="#F1F5FA")
         aplicar_icono_ventana(self)
         self.protocol("WM_DELETE_WINDOW", self._cerrar_aplicacion)
 
@@ -229,36 +229,36 @@ class MainWindow(ctk.CTk):
 
     def _crear_navegacion(self):
         nav = ctk.CTkFrame(self, fg_color="#FFFFFF", corner_radius=0,
-                           border_width=1, border_color="#E4EAF1", width=224)
+                           border_width=1, border_color="#E4EAF1", width=238)
         nav.grid(row=1, column=0, sticky="nsew")
         nav.grid_propagate(False)
-        ctk.CTkLabel(nav, text="ESPACIO DE TRABAJO", text_color="#8A98AA",
+        ctk.CTkLabel(nav, text="MÓDULOS OPERATIVOS", text_color="#8A98AA",
                      font=ctk.CTkFont(size=10, weight="bold")).pack(
                          anchor="w", padx=20, pady=(30, 12))
         self.nav_reportes = ctk.CTkButton(
-            nav, text="▦   Reportes semanales", anchor="w", height=44,
-            corner_radius=9, font=ctk.CTkFont(size=13, weight="bold"),
+            nav, text="▦   Reportes semanales", anchor="w", height=48,
+            corner_radius=11, font=ctk.CTkFont(size=13, weight="bold"),
             command=lambda: self._mostrar_pagina("reportes"))
         self.nav_reportes.pack(fill="x", padx=12, pady=4)
         self.nav_cctv = ctk.CTkButton(
-            nav, text="▣   CCTV · WhatsApp", anchor="w", height=44,
-            corner_radius=9, font=ctk.CTkFont(size=13, weight="bold"),
+            nav, text="▣   CCTV · WhatsApp", anchor="w", height=48,
+            corner_radius=11, font=ctk.CTkFont(size=13, weight="bold"),
             command=lambda: self._mostrar_pagina("cctv"))
         self.nav_cctv.pack(fill="x", padx=12, pady=4)
-        ctk.CTkLabel(nav, text="OPERACIONES CHILE", text_color="#94A3B8",
+        ctk.CTkLabel(nav, text="NOVASOURCE  •  CHILE", text_color="#94A3B8",
                      font=ctk.CTkFont(size=10, weight="bold")).pack(
                          side="bottom", anchor="w", padx=20, pady=22)
 
     def _mostrar_pagina(self, pagina):
-        active, muted = "#E7F0FF", "#FFFFFF"
+        active, muted = "#E8F2FB", "#FFFFFF"
         for btn, selected in ((self.nav_reportes, pagina == "reportes"),
                               (self.nav_cctv, pagina == "cctv")):
             btn.configure(fg_color=active if selected else muted,
-                          hover_color="#DCEAFF" if selected else "#F2F6FA",
-                          text_color="#1456A0" if selected else "#52647A")
+                          hover_color="#D6EAF9" if selected else "#F2F6FA",
+                          text_color="#12659A" if selected else "#52647A")
         (self.page_reports if pagina == "reportes" else self.page_cctv).tkraise()
-        self.lbl_contexto.configure(text="Reportes semanales" if pagina == "reportes"
-                                   else "Monitoreo CCTV · WhatsApp")
+        self.lbl_contexto.configure(text="NovaSource Power Services  /  Reportes semanales" if pagina == "reportes"
+                                   else "NovaSource Power Services  /  Monitoreo CCTV · WhatsApp")
 
     def _cerrar_aplicacion(self):
         try:
@@ -269,7 +269,7 @@ class MainWindow(ctk.CTk):
             pass
 
     def _crear_encabezado(self):
-        header = ctk.CTkFrame(self, height=76, corner_radius=0,
+        header = ctk.CTkFrame(self, height=88, corner_radius=0,
                               fg_color="#FFFFFF", border_width=1,
                               border_color="#E4EAF1")
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
@@ -279,21 +279,21 @@ class MainWindow(ctk.CTk):
             try:
                 im = Image.open(logo_path).convert("RGBA")
                 self._header_logo = ctk.CTkImage(
-                    light_image=im, dark_image=im, size=(52, 52)
+                    light_image=im, dark_image=im, size=(56, 56)
                 )
                 ctk.CTkLabel(header, image=self._header_logo, text="",
-                             width=58, height=58).pack(
+                             width=64, height=64).pack(
                     side="left", padx=(24, 16), pady=8
                 )
             except Exception as exc:
                 print(f"No se pudo mostrar el logo: {exc}")
         text_frame = ctk.CTkFrame(header, fg_color="transparent")
         text_frame.pack(side="left", fill="y", pady=12)
-        ctk.CTkLabel(text_frame, text="NovaCommand CCTV | NovaSource Power Services",
+        ctk.CTkLabel(text_frame, text="NovaCommand CCTV",
                      text_color="#172B4D",
-                     font=ctk.CTkFont(size=19, weight="bold")
+                     font=ctk.CTkFont(size=23, weight="bold")
                      ).pack(anchor="w")
-        self.lbl_contexto = ctk.CTkLabel(text_frame, text="Reportes semanales",
+        self.lbl_contexto = ctk.CTkLabel(text_frame, text="NovaSource Power Services  /  Reportes semanales",
                      text_color="#718096", font=ctk.CTkFont(size=11))
         self.lbl_contexto.pack(anchor="w")
         ctk.CTkButton(header, text="Ver Excel Maestro", width=154, height=37,
@@ -438,7 +438,7 @@ class MainWindow(ctk.CTk):
         card = ctk.CTkFrame(self.page_reports, fg_color="#FFFFFF", corner_radius=14,
                             border_width=1, border_color="#E4EAF1")
         card.pack(fill="x", padx=20, pady=(22, 14))
-        ctk.CTkLabel(card, text="Importar reporte semanal",
+        ctk.CTkLabel(card, text="01  Importar reporte semanal",
                      font=ctk.CTkFont(size=17, weight="bold"),
                      text_color="#172B4D").pack(anchor="w", padx=22, pady=(19, 2))
         ctk.CTkLabel(card, text="Selecciona el archivo Excel que deseas procesar y consolidar.",
@@ -456,7 +456,7 @@ class MainWindow(ctk.CTk):
                       text_color="#24527A", command=self._seleccionar_reporte).pack(
                           side="left", padx=(0, 9))
         self.btn_procesar = ctk.CTkButton(
-            line, text="Procesar reporte", width=156, height=42,
+            line, text="Procesar reporte", width=166, height=42,
             fg_color="#1565B8", hover_color="#0F4F95", corner_radius=8,
             font=ctk.CTkFont(size=12, weight="bold"),
             command=self._ejecutar_procesamiento)
@@ -476,7 +476,7 @@ class MainWindow(ctk.CTk):
             ("OMITIDOS / SIN CAMBIOS", "lbl_num_omitidos", "#C24135"),
         )
         for index, (label, attr, color) in enumerate(metrics):
-            card = ctk.CTkFrame(cards, fg_color="#FFFFFF", corner_radius=12,
+            card = ctk.CTkFrame(cards, fg_color="#FFFFFF", corner_radius=16,
                                 border_width=1, border_color="#E4EAF1")
             card.grid(row=0, column=index, sticky="ew",
                       padx=(0, 8) if index == 0 else ((8, 0) if index == 2 else 8))
@@ -487,12 +487,12 @@ class MainWindow(ctk.CTk):
                                  font=ctk.CTkFont(size=29, weight="bold"))
             value.pack(anchor="w", padx=19, pady=(0, 13))
             setattr(self, attr, value)
-        logs_card = ctk.CTkFrame(container, fg_color="#FFFFFF", corner_radius=12,
+        logs_card = ctk.CTkFrame(container, fg_color="#FFFFFF", corner_radius=16,
                                  border_width=1, border_color="#E4EAF1")
         logs_card.grid(row=1, column=0, sticky="nsew")
         head = ctk.CTkFrame(logs_card, fg_color="transparent")
         head.pack(fill="x", padx=18, pady=(14, 9))
-        ctk.CTkLabel(head, text="Registro de actividad",
+        ctk.CTkLabel(head, text="Actividad y auditoría",
                      font=ctk.CTkFont(size=14, weight="bold"),
                      text_color="#172B4D").pack(side="left")
         ctk.CTkButton(head, text="Limpiar", width=75, height=28,

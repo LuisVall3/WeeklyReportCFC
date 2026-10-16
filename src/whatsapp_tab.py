@@ -19,7 +19,8 @@ import shutil
 
 import customtkinter as ctk
 
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, Label
+from PIL import ImageTk
 
 from PIL import Image, ImageGrab
 
@@ -28,7 +29,7 @@ from PIL import Image, ImageGrab
 from src.paths import APP_DIR as ROOT
 
 SETTINGS = ROOT / 'whatsapp_settings.json'
-DEFAULT_GROUP = 'Emergencias e intruciones CCTV'
+DEFAULT_GROUP = 'Emergencias e intrusiones CCTV'
 
 ERROR_LOG_DIR = ROOT / 'data' / 'Logs'
 
@@ -68,17 +69,17 @@ PARQUES = [
 
 OPERADORES = ['Bastían Contreras', 'Sebastián Davila', 'Anais Yañez', 'Katherine Garate', 'Matías Guzmán']
 
-BG = '#F2F5FA'
+BG = '#F1F5FA'
 
 WHITE = '#FFFFFF'
 
-NAVY = '#183B60'
+NAVY = '#173B5D'
 
-BLUE = '#176CA7'
+BLUE = '#116DA5'
 
 MUTED = '#64748B'
 
-BORDER = '#E1E8F0'
+BORDER = '#DDE6F0'
 
 
 
@@ -471,7 +472,7 @@ class WhatsAppTab(ctk.CTkFrame):
 
     def _card(self, parent, title, subtitle=None):
 
-        card = ctk.CTkFrame(parent, fg_color=WHITE, corner_radius=14,
+        card = ctk.CTkFrame(parent, fg_color=WHITE, corner_radius=17,
 
                             border_width=1, border_color=BORDER)
 
@@ -479,7 +480,7 @@ class WhatsAppTab(ctk.CTkFrame):
 
         header.pack(fill='x', padx=22, pady=(17, 9))
 
-        ctk.CTkLabel(header, text=title, font=ctk.CTkFont(size=16, weight='bold'),
+        ctk.CTkLabel(header, text=title, font=ctk.CTkFont(size=17, weight='bold'),
 
                      text_color=NAVY, anchor='w').pack(fill='x')
 
@@ -537,11 +538,11 @@ class WhatsAppTab(ctk.CTkFrame):
 
         title.grid(row=0, column=0, sticky='ew', pady=(0, 12))
 
-        ctk.CTkLabel(title, text='Reporte de cámaras CCTV', text_color=NAVY,
+        ctk.CTkLabel(title, text='Monitoreo de cámaras CCTV', text_color=NAVY,
 
-                     font=ctk.CTkFont(size=24, weight='bold')).pack(anchor='w')
+                     font=ctk.CTkFont(size=26, weight='bold')).pack(anchor='w')
 
-        ctk.CTkLabel(title, text='Disponibilidad de cámaras y envío de evidencia a WhatsApp',
+        ctk.CTkLabel(title, text='Prepara evidencias por parque y envíalas de forma ordenada por WhatsApp',
 
                      text_color=MUTED, font=ctk.CTkFont(size=12)).pack(anchor='w', pady=(3, 0))
 
@@ -666,7 +667,7 @@ class WhatsAppTab(ctk.CTkFrame):
 
         self.preview_area.pack_propagate(False)
 
-        self.preview = ctk.CTkLabel(self.preview_area, text='Sin captura adjunta', text_color=MUTED)
+        self.preview = Label(self.preview_area, text='Sin captura adjunta', bg='#F7F9FC', fg=MUTED, bd=0)
 
         self.preview.pack(expand=True)
 
@@ -706,7 +707,7 @@ class WhatsAppTab(ctk.CTkFrame):
 
         footer.grid_columnconfigure(0, weight=1)
 
-        self.status = ctk.CTkLabel(footer, text='Listo para preparar reporte',
+        self.status = ctk.CTkLabel(footer, text='Cola de reportes  ·  Lista para preparar',
 
                                    text_color=MUTED, height=22)
 
@@ -714,11 +715,13 @@ class WhatsAppTab(ctk.CTkFrame):
         queue_actions = ctk.CTkFrame(footer, fg_color='transparent')
         queue_actions.grid(row=1, column=0, sticky='ew', padx=24, pady=(0, 12))
         queue_actions.grid_columnconfigure((0, 1), weight=1)
-        self.queue_button = ctk.CTkButton(queue_actions, text='Agregar parque a la cola',
-                                          command=self.add_to_queue, fg_color=NAVY)
+        self.queue_button = ctk.CTkButton(queue_actions, text='＋  Agregar parque a la cola',
+                                          command=self.add_to_queue, fg_color=NAVY,
+                                          hover_color='#102D48', height=42, corner_radius=9)
         self.queue_button.grid(row=0, column=0, sticky='ew', padx=(0, 6))
         self.batch_button = ctk.CTkButton(queue_actions, text='Enviar cola (0)',
-                                          command=self.send_queue, fg_color=BLUE)
+                                          command=self.send_queue, fg_color=BLUE,
+                                          hover_color='#095784', height=42, corner_radius=9)
         self.batch_button.grid(row=0, column=1, sticky='ew', padx=(6, 0))
 
 
@@ -809,9 +812,13 @@ class WhatsAppTab(ctk.CTkFrame):
 
         size = (max(1, int(w * factor)), max(1, int(h * factor)))
 
-        self.preview_image = ctk.CTkImage(light_image=self.image, dark_image=self.image, size=size)
-
-        self.preview.configure(image=self.preview_image, text='')
+        # La imagen debe pertenecer al intérprete Tcl del widget de destino.
+        # ImageTk.PhotoImage sin master puede crear pyimage en otra ventana Tk
+        # (por ejemplo, después de cerrar SetupDialog).
+        resized = self.image.resize(size, Image.Resampling.LANCZOS)
+        new_preview = ImageTk.PhotoImage(resized, master=self.preview)
+        self.preview.configure(image=new_preview, text='')
+        self.preview_image = new_preview
 
 
 
@@ -924,10 +931,11 @@ class WhatsAppTab(ctk.CTkFrame):
         self._update_availability()
         # La cola conserva su propia copia guardada en disco.
         # Limpiar la evidencia del formulario evita reutilizarla en otro parque.
+        # Desvincular antes de liberar la referencia PhotoImage.
+        self.preview.configure(image=None, text='Sin captura adjunta')
         self.image = None
         self.image_path = None
         self.preview_image = None
-        self.preview.configure(image=None, text='Sin captura adjunta')
 
     def send_queue(self):
         if self._sending:
