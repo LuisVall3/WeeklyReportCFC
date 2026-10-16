@@ -706,23 +706,13 @@ class WhatsAppTab(ctk.CTkFrame):
 
         footer.grid_columnconfigure(0, weight=1)
 
-        self.send_button = ctk.CTkButton(footer, text='Enviar reporte a WhatsApp',
-
-                                          command=self.send_automated, height=43,
-
-                                          fg_color=BLUE, hover_color=NAVY,
-
-                                          font=ctk.CTkFont(size=14, weight='bold'))
-
-        self.send_button.grid(row=0, column=0, sticky='ew', padx=24, pady=(12, 4))
-
         self.status = ctk.CTkLabel(footer, text='Listo para preparar reporte',
 
                                    text_color=MUTED, height=22)
 
-        self.status.grid(row=1, column=0, pady=(0, 9))
+        self.status.grid(row=0, column=0, pady=(10, 7))
         queue_actions = ctk.CTkFrame(footer, fg_color='transparent')
-        queue_actions.grid(row=2, column=0, sticky='ew', padx=24, pady=(0, 12))
+        queue_actions.grid(row=1, column=0, sticky='ew', padx=24, pady=(0, 12))
         queue_actions.grid_columnconfigure((0, 1), weight=1)
         self.queue_button = ctk.CTkButton(queue_actions, text='Agregar parque a la cola',
                                           command=self.add_to_queue, fg_color=NAVY)
@@ -950,7 +940,6 @@ class WhatsAppTab(ctk.CTkFrame):
         self._sending = True
         self.batch_button.configure(state='disabled', text='Enviando cola...')
         self.queue_button.configure(state='disabled')
-        self.send_button.configure(state='disabled')
         self.status.configure(text='Iniciando WhatsApp Web...')
 
         def progress(result):
@@ -971,7 +960,6 @@ class WhatsAppTab(ctk.CTkFrame):
         self._sending = False
         self.batch_button.configure(state='normal')
         self.queue_button.configure(state='normal')
-        self.send_button.configure(state='normal')
         if error_code:
             self.batch_button.configure(text=f'Enviar cola ({len(self._report_queue)})')
             self.status.configure(text='Error al iniciar o procesar la tanda')
@@ -1104,7 +1092,6 @@ class WhatsAppTab(ctk.CTkFrame):
 
         self._sending = True
 
-        self.send_button.configure(state='disabled', text='Enviando reporte...')
 
         self.status.configure(text='Abriendo WhatsApp Web...')
 
@@ -1138,7 +1125,6 @@ class WhatsAppTab(ctk.CTkFrame):
 
         self._sending = False
 
-        self.send_button.configure(state='normal', text='Enviar reporte a WhatsApp')
 
         self.status.configure(text='No se pudo confirmar el envío' if error else 'Envío ejecutado; revisa WhatsApp Web')
 
