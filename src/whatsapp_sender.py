@@ -520,12 +520,31 @@ def cargar_fotografia(driver, photo):
     click_seguro(driver, attach)
     logger.info("Menú de adjuntos abierto.")
 
-    opcion = esperar(driver, 15).until(
-        lambda d: visible(
-            d, By.CSS_SELECTOR,
-            'button[role="menuitem"][aria-label="Photos & videos"]'
-        )
-    )
+    # Compatible con WhatsApp Web en español e inglés.
+    # Se selecciona la opción del menú, nunca el input de stickers.
+    def opcion_fotos(d):
+        for item in d.find_elements(By.CSS_SELECTOR, '[role="menuitem"]'):
+            try:
+                if not item.is_displayed() or not item.is_enabled():
+                    continue
+                etiqueta = normalizar(
+                    (item.get_attribute("aria-label") or "") + " " + (item.text or "")
+                ).casefold()
+                if any(nombre in etiqueta for nombre in (
+                    "photos & videos", "fotos y videos", "fotos e vídeos"
+                )):
+                    return item
+            except StaleElementReferenceException:
+                continue
+        return False
+
+    try:
+        opcion = esperar(driver, 15).until(opcion_fotos)
+    except TimeoutException as exc:
+        raise WhatsAppSendError(
+            "No se encontró Fotos y videos / Photos & videos en el menú. "
+            "No se envió ningún mensaje."
+        ) from exc
 
     # Copiar antes de abrir el diálogo: evita que escribir la ruta pierda letras.
     pyperclip.copy(str(photo))
@@ -603,25 +622,56 @@ def escribir_descripcion(driver, message):
     )
 # ============================================================# BOTÓN DE ENVÍO# ============================================================
 def boton_enviar_imagen(driver):
-    """Encuentra exclusivamente el botón de envío de la vista previa de foto."""
-    if not campo_descripcion(driver):
+    """Detecta Enviar / Send solo en la vista previa de la fotografía."""
+    caption = campo_descripcion(driver)
+    if not caption:
         return False
-    botones = driver.find_elements(
-        By.CSS_SELECTOR,
-        '[role="button"][aria-label^="Send "]:has([data-icon="wds-ic-send-filled"])'
+    selectors = (
+        '[role="button"][aria-label^="Send" i]',
+        '[role="button"][aria-label^="Enviar" i]',
+        'button[aria-label^="Send" i]',
+        'button[aria-label^="Enviar" i]',
+        '[data-icon="wds-ic-send-filled"]',
+        '[data-icon="send"]',
     )
     candidatos = []
-    for boton in botones:
-        try:
-            if boton.is_displayed() and boton.is_enabled():
-                candidatos.append(boton)
-        except StaleElementReferenceException:
-            continue
+    identificados = set()
+    for selector in selectors:
+        for element in driver.find_elements(By.CSS_SELECTOR, selector):
+            try:
+                boton = driver.execute_script(
+                    "return arguments[0].closest('button, [role=button]') || arguments[0];",
+                    element,
+                )
+                if not boton.is_displayed() or not boton.is_enabled():
+                    continue
+                # Excluye el botón de enviar texto del chat principal.
+                if driver.execute_script(
+                    "return !!arguments[0].closest('#main footer');", boton
+                ):
+                    continue
+                # Exige un contenedor compartido con la descripción de la foto.
+                if not driver.execute_script("""
+                    const boton = arguments[0], descripcion = arguments[1];
+                    let padre = descripcion;
+                    for (let i = 0; padre && i < 10; i++, padre = padre.parentElement) {
+                        if (padre.contains(boton) && !padre.matches('body, html, #main'))
+                            return true;
+                    }
+                    return false;
+                """, boton, caption):
+                    continue
+                identificador = boton.id
+                if identificador not in identificados:
+                    identificados.add(identificador)
+                    candidatos.append(boton)
+            except (StaleElementReferenceException, WebDriverException):
+                continue
     if len(candidatos) != 1:
-        logger.info('Botones de envío de foto encontrados: %s', len(candidatos))
+        logger.info('Botones de envío de fotografía encontrados: %s', len(candidatos))
         return False
-    logger.info('Botón de envío identificado: %s', candidatos[0].get_attribute('aria-label'))
     return candidatos[0]
+
 def mensajes_salientes(driver):
     return driver.find_elements(
         By.CSS_SELECTOR,
