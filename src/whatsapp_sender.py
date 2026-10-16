@@ -244,33 +244,41 @@ def verificar_destinatario(driver, group_name):
     )
 # ============================================================# RESULTADO EXACTO DEL GRUPO# ============================================================
 def buscar_titulo_exacto(driver, group_name):
+    """Devuelve una coincidencia por CHAT, no por span con título repetido.
+
+    WhatsApp puede dibujar el mismo nombre en varios nodos dentro de
+    un único resultado. Si hay dos filas de chat diferentes con el
+    mismo nombre, se conservan ambas para bloquear un envío ambiguo.
     """
-    Busca un chat cuyo título coincida exactamente
-    con el nombre solicitado.
-    No utiliza el contenido de los mensajes.
-    """
-    elements = driver.find_elements(
-        By.CSS_SELECTOR,
-        '#pane-side span[title]',
-    )
+    elements = driver.find_elements(By.CSS_SELECTOR, '#pane-side span[title]')
     matches = []
-    seen = set()
+    seen_rows = set()
     for element in elements:
         try:
             if not element.is_displayed():
                 continue
-            title = (
-                element.get_attribute("title") or ""
-            ).strip()
+            title = (element.get_attribute('title') or '').strip()
             if normalizar(title) != normalizar(group_name):
                 continue
-            if element.id in seen:
+            # Identificar el contenedor de la conversación en el listado.
+            # Los spans duplicados del mismo chat comparten esta fila.
+            row = driver.execute_script('''
+                const e = arguments[0];
+                return e.closest('[role="row"], [data-testid="cell-frame-container"], [data-testid="chat-list-item"]')
+                    || e.closest('[data-id]')
+                    || e.closest('[role="listitem"]')
+                    || e.parentElement;
+            ''', element)
+            if row is None:
+                row = element
+            if row.id in seen_rows:
                 continue
-            seen.add(element.id)
+            seen_rows.add(row.id)
             matches.append(element)
         except StaleElementReferenceException:
             continue
     return matches
+
 def abrir_grupo(driver, group_name):
     logger.info(
         "Buscando grupo exacto: %s",

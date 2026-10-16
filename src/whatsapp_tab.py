@@ -918,6 +918,16 @@ class WhatsAppTab(ctk.CTkFrame):
         self._report_queue[park] = {'park': park, 'message': message, 'image_path': str(path)}
         self.batch_button.configure(text=f'Enviar cola ({len(self._report_queue)})')
         self.status.configure(text=f'{len(self._report_queue)} de {len(PARQUES)} parques preparados')
+        # Reiniciar solo los campos variables tras guardar el reporte en la cola.
+        self.novedades.delete('1.0', 'end')
+        self.cameras.set('0')
+        self._update_availability()
+        # La cola conserva su propia copia guardada en disco.
+        # Limpiar la evidencia del formulario evita reutilizarla en otro parque.
+        self.image = None
+        self.image_path = None
+        self.preview_image = None
+        self.preview.configure(image=None, text='Sin captura adjunta')
 
     def send_queue(self):
         if self._sending:
