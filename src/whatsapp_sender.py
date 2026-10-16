@@ -244,112 +244,98 @@ def verificar_destinatario(driver, group_name):
     )
 # ============================================================# RESULTADO EXACTO DEL GRUPO# ============================================================
 def buscar_titulo_exacto(driver, group_name):
-    """Devuelve una coincidencia por CHAT, no por span con título repetido.
+    """Busca filas de chats visibles, sin depender de un único selector de WhatsApp.
 
-    WhatsApp puede dibujar el mismo nombre en varios nodos dentro de
-    un único resultado. Si hay dos filas de chat diferentes con el
-    mismo nombre, se conservan ambas para bloquear un envío ambiguo.
+    Una misma fila puede contener varios spans con el mismo título. Si hay
+    varias filas distintas, se conservan para bloquear envíos ambiguos.
     """
-    elements = driver.find_elements(By.CSS_SELECTOR, '#pane-side span[title]')
-    matches = []
-    seen_rows = set()
-    for element in elements:
-        try:
-            if not element.is_displayed():
+    esperado = normalizar(group_name)
+    candidatos = []
+    vistos = set()
+    # Algunas versiones de WhatsApp Web usan #pane-side, otras renderizan
+    # resultados en el panel lateral sin ese contenedor.
+    selectores = (
+        '#pane-side span[title]',
+        '#side [role="grid"] span[title]',
+        '#side [role="list"] span[title]',
+        '#side [role="listbox"] span[title]',
+        '#side [data-testid="chat-list"] span[title]',
+        '#side span[title]',
+    )
+    for selector in selectores:
+        for element in driver.find_elements(By.CSS_SELECTOR, selector):
+            try:
+                if not element.is_displayed():
+                    continue
+                titulo = (element.get_attribute('title') or '').strip()
+                if normalizar(titulo) != esperado:
+                    continue
+                fila = driver.execute_script("""
+                    const e = arguments[0];
+                    return e.closest('[role="row"], [data-testid="cell-frame-container"], [data-testid="chat-list-item"], [role="listitem"], [data-id]')
+                        || e.closest('[tabindex]') || e.parentElement;
+                """, element) or element
+                identificador = fila.id
+                if identificador in vistos:
+                    continue
+                vistos.add(identificador)
+                candidatos.append(element)
+            except (StaleElementReferenceException, WebDriverException):
                 continue
-            title = (element.get_attribute('title') or '').strip()
-            if normalizar(title) != normalizar(group_name):
-                continue
-            # Identificar el contenedor de la conversación en el listado.
-            # Los spans duplicados del mismo chat comparten esta fila.
-            row = driver.execute_script('''
-                const e = arguments[0];
-                return e.closest('[role="row"], [data-testid="cell-frame-container"], [data-testid="chat-list-item"]')
-                    || e.closest('[data-id]')
-                    || e.closest('[role="listitem"]')
-                    || e.parentElement;
-            ''', element)
-            if row is None:
-                row = element
-            if row.id in seen_rows:
-                continue
-            seen_rows.add(row.id)
-            matches.append(element)
-        except StaleElementReferenceException:
-            continue
-    return matches
+    return candidatos
 
 def abrir_grupo(driver, group_name):
-    logger.info(
-        "Buscando grupo exacto: %s",
-        group_name,
-    )
+    """Abre un único chat de nombre exacto y verifica su encabezado."""
+    logger.info("Buscando grupo exacto: %s", group_name)
     if grupo_abierto(driver, group_name):
-        logger.info(
-            "Grupo correcto ya abierto."
-        )
+        logger.info("Grupo correcto ya abierto.")
         return
-    search = esperar(driver, 60).until(
-        barra_busqueda
-    )
+
+    search = esperar(driver, 60).until(barra_busqueda)
     click_seguro(driver, search)
-    search.send_keys(
-        Keys.CONTROL,
-        "a",
-    )
+    search.send_keys(Keys.CONTROL, 'a')
     search.send_keys(group_name)
-    logger.info(
-        "Esperando resultados..."
-    )
-    try:
-        matches = esperar(driver, 30).until(
-            lambda d: (
-                buscar_titulo_exacto(d, group_name)
-                or False
+    logger.info("Esperando resultados del panel lateral...")
+
+    # Revalidar la coincidencia inmediatamente antes del clic. Nunca
+    # convertir un resultado ambiguo en una selección arbitraria.
+    limite = time.monotonic() + 35
+    ultimo_total = 0
+    while time.monotonic() < limite:
+        if grupo_abierto(driver, group_name):
+            return
+        coincidencias = buscar_titulo_exacto(driver, group_name)
+        ultimo_total = len(coincidencias)
+        if ultimo_total > 1:
+            raise WhatsAppSendError(
+                f"Se encontraron {ultimo_total} chats distintos llamados «{group_name}». "
+                "No se abrirá ninguno por seguridad."
             )
-        )
-    except TimeoutException as exc:
-        raise WhatsAppSendError(
-            f"No se encontró el chat exacto "
-            f"«{group_name}»."
-        ) from exc
-    matches = buscar_titulo_exacto(
-        driver,
-        group_name,
+        if ultimo_total == 1:
+            try:
+                click_seguro(driver, coincidencias[0])
+            except (StaleElementReferenceException, WebDriverException):
+                time.sleep(0.5)
+                continue
+            try:
+                esperar(driver, 12).until(lambda d: grupo_abierto(d, group_name))
+                logger.info("Grupo abierto y verificado: %s", group_name)
+                return
+            except TimeoutException:
+                actual = nombre_chat_abierto(driver)
+                if actual and normalizar(actual) != normalizar(group_name):
+                    raise WhatsAppSendError(
+                        f"SEGURIDAD: se abrió «{actual}», no «{group_name}». "
+                        "No se enviará ningún reporte."
+                    )
+                # Puede tardar en aparecer el encabezado; volver a consultar.
+        time.sleep(0.5)
+
+    raise WhatsAppSendError(
+        f"No se pudo abrir y verificar «{group_name}» "
+        f"(coincidencias visibles: {ultimo_total}). "
+        "Se guardará diagnóstico y no se enviará ningún reporte."
     )
-    if len(matches) != 1:
-        raise WhatsAppSendError(
-            f"Se encontraron {len(matches)} coincidencias "
-            f"exactas para «{group_name}». "
-            "No se abrirá ningún chat."
-        )
-    logger.info(
-        "Título exacto encontrado."
-    )
-    click_seguro(
-        driver,
-        matches[0],
-    )
-    try:
-        esperar(driver, 20).until(
-            lambda d: grupo_abierto(
-                d,
-                group_name,
-            )
-        )
-    except TimeoutException as exc:
-        actual = nombre_chat_abierto(driver)
-        raise WhatsAppSendError(
-            "SEGURIDAD: chat incorrecto. "
-            f"Esperado: «{group_name}». "
-            f"Detectado: «{actual}». "
-            "No se enviará el reporte."
-        ) from exc
-    logger.info(
-        "Grupo abierto y verificado: %s",
-        group_name,
-    )
-# ============================================================# EDITOR PRINCIPAL# ============================================================
 def editor_principal(driver):
     selectors = [
         '#main footer [contenteditable="true"][role="textbox"]',
@@ -1081,8 +1067,12 @@ def send_reports_batch(group_name, reports, on_progress=None, profile_dir=None, 
         driver = webdriver.Chrome(options=options)
         driver.get("https://web.whatsapp.com/")
         esperar(driver, timeout).until(barra_busqueda)
-        abrir_grupo(driver, group_name)
-        verificar_destinatario(driver, group_name)
+        try:
+            abrir_grupo(driver, group_name)
+            verificar_destinatario(driver, group_name)
+        except Exception:
+            guardar_diagnostico(driver, "busqueda_grupo_cola")
+            raise
 
         for index, item in enumerate(items):
             try:
